@@ -1,6 +1,7 @@
-﻿const { useEffect, useMemo, useRef, useState } = React;
+﻿
+const { useEffect, useMemo, useRef, useState } = React;
 
-const STORAGE_KEY = "chance_music_data_v4";
+const STORAGE_KEY = "chance_music_data_v5";
 const SITE_NAME = "Шанс | Music";
 const AUTH_USERS_KEY = "chance_music_users_v3";
 const AUTH_SESSION_KEY = "chance_music_session_v3";
@@ -17,12 +18,20 @@ const SPOTIFY_SCOPES = [
   "playlist-read-collaborative"
 ].join(" ");
 
-const FALLBACK_DATA = {
-  site: { logo: "./logo.png" },
-  tracks: [],
-  playlists: [],
-  user: { collectionTrackIds: [] }
+const SAMPLE_TRACK = {
+  id: "demo-track-1",
+  title: "Chance Demo",
+  artist: "Chance Music",
+  cover: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=900&q=80",
+  audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+  releaseDate: "2026-03-01",
+  isUpcoming: false,
+  liked: false,
+  format: "MP3"
 };
+
+const EQ_FREQUENCIES = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
+const EQ_PRESET_GAINS = [0, 0, -6, -6, -6, -6, -6, -6, -5, -5];
 
 function formatTime(v) {
   if (!Number.isFinite(v)) return "0:00";
@@ -60,7 +69,7 @@ function normalizeUsers(users) {
     password: u.password || "",
     role: u.role || (i === 0 ? "admin" : "user"),
     avatar: u.avatar || "https://placehold.co/160x160/000/fff?text=Avatar",
-    banner: u.banner || "https://placehold.co/1280x500/000/fff?text=Banner+1280x500",
+    banner: u.banner || "https://placehold.co/1280x500/000/fff?text=Banner",
     friends: Array.isArray(u.friends) ? u.friends : [],
     nicknameChangedAt: Number.isFinite(u.nicknameChangedAt) ? u.nicknameChangedAt : 0,
     nickStyle: {
@@ -76,6 +85,25 @@ function loadUsers() {
   } catch {
     return [];
   }
+}
+
+function normalizeAppData(raw) {
+  const source = raw || {};
+  const track = { ...SAMPLE_TRACK };
+  return {
+    ...source,
+    site: { ...(source.site || {}), logo: "./logo.png" },
+    tracks: [track],
+    playlists: [{ id: "demo-playlist", name: "Пробный плейлист", cover: track.cover, trackIds: [track.id] }],
+    user: { ...(source.user || {}), collectionTrackIds: [track.id] }
+  };
+}
+
+function detectAudioQuality(track) {
+  if (!track) return "UNKNOWN";
+  if (track.format) return String(track.format).toUpperCase();
+  const m = String(track.audio || "").match(/\.([a-z0-9]+)(?:\?|$)/i);
+  return m ? m[1].toUpperCase() : "UNKNOWN";
 }
 
 function Nick({ user }) {
@@ -111,20 +139,26 @@ function App() {
   const [loginMethod, setLoginMethod] = useState("username");
   const [authForm, setAuthForm] = useState({ username: "", email: "", password: "" });
   const [authError, setAuthError] = useState("");
+
   const [profileError, setProfileError] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
   const [newNick, setNewNick] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [editProfileMode, setEditProfileMode] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   const [currentTrackId, setCurrentTrackId] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.8);
-  const [equalizerOpen, setEqualizerOpen] = useState(false);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
-  const [activePlaylistId, setActivePlaylistId] = useState("");
+  const [playerMenuOpen, setPlayerMenuOpen] = useState(false);
+
+  const [eqOpen, setEqOpen] = useState(false);
+  const [eqEnabled, setEqEnabled] = useState(true);
+  const [eqPreset, setEqPreset] = useState("studio");
+  const [eqCustomGains, setEqCustomGains] = useState([...EQ_PRESET_GAINS]);
 
   const [spotifyClientId, setSpotifyClientId] = useState("");
   const [spotifyRedirectUri, setSpotifyRedirectUri] = useState(`${window.location.origin}${window.location.pathname}`);
@@ -137,6 +171,8 @@ function App() {
   const [spotifyError, setSpotifyError] = useState("");
 
   const audioRef = useRef(null);
+  const audioCtxRef = useRef(null);
+  const eqFiltersRef = useRef([]);
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
   const profileUser = useMemo(() => {
@@ -144,6 +180,11 @@ function App() {
     if (!viewedProfileId) return currentUser;
     return users.find((u) => u.id === viewedProfileId) || currentUser;
   }, [users, currentUser, viewedProfileId]);
+
+  const tracks = data?.tracks || [];
+  const playlists = data?.playlists || [];
+  const trackIndex = tracks.findIndex((t) => t.id === currentTrackId);
+  const currentTrack = tracks[trackIndex] || tracks[0] || null;
 
   useEffect(() => {
     localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
@@ -212,7 +253,9 @@ function App() {
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body
         });
-        const json = await res.json();
+        const raw = await res.text();
+        let json = {};
+        try { json = raw ? JSON.parse(raw) : {}; } catch { json = { error_description: raw }; }
         if (!res.ok) throw new Error(json.error_description || json.error || "Ошибка токена");
         const tokenData = { accessToken: json.access_token, expiresAt: Date.now() + (json.expires_in - 30) * 1000 };
         setSpotifyToken(tokenData);
@@ -234,21 +277,24 @@ function App() {
     if (fromStorage) {
       try {
         const parsed = JSON.parse(fromStorage);
-        setData(parsed);
-        setCurrentTrackId(parsed.tracks?.[0]?.id || null);
-        setActivePlaylistId(parsed.playlists?.[0]?.id || "");
+        const normalized = normalizeAppData(parsed);
+        setData(normalized);
+        setCurrentTrackId(normalized.tracks?.[0]?.id || null);
         return;
       } catch {}
     }
     fetch("./data.json")
       .then((r) => r.json())
       .then((json) => {
-        const d = { ...json, site: { ...json.site, logo: "./logo.png" } };
-        setData(d);
-        setCurrentTrackId(d.tracks?.[0]?.id || null);
-        setActivePlaylistId(d.playlists?.[0]?.id || "");
+        const normalized = normalizeAppData(json);
+        setData(normalized);
+        setCurrentTrackId(normalized.tracks?.[0]?.id || null);
       })
-      .catch(() => setData(FALLBACK_DATA));
+      .catch(() => {
+        const normalized = normalizeAppData({});
+        setData(normalized);
+        setCurrentTrackId(normalized.tracks?.[0]?.id || null);
+      });
   }, []);
 
   useEffect(() => {
@@ -257,8 +303,37 @@ function App() {
   }, [data]);
 
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
+    if (!audioRef.current) return;
+    audioRef.current.volume = volume;
   }, [volume]);
+
+  const ensureAudioGraph = () => {
+    if (!audioRef.current || audioCtxRef.current) return;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = ctx.createMediaElementSource(audioRef.current);
+    let prev = source;
+    const filters = EQ_FREQUENCIES.map((freq, idx) => {
+      const f = ctx.createBiquadFilter();
+      f.type = idx === 0 ? "lowshelf" : idx === EQ_FREQUENCIES.length - 1 ? "highshelf" : "peaking";
+      f.frequency.value = freq;
+      f.Q.value = 1;
+      prev.connect(f);
+      prev = f;
+      return f;
+    });
+    prev.connect(ctx.destination);
+    audioCtxRef.current = ctx;
+    eqFiltersRef.current = filters;
+  };
+
+  useEffect(() => {
+    if (!eqFiltersRef.current.length || !audioCtxRef.current) return;
+    const gains = eqPreset === "custom" ? eqCustomGains : EQ_PRESET_GAINS;
+    eqFiltersRef.current.forEach((f, i) => {
+      const gain = eqEnabled ? (gains[i] || 0) : 0;
+      f.gain.setTargetAtTime(gain, audioCtxRef.current.currentTime, 0.05);
+    });
+  }, [eqPreset, eqCustomGains, eqEnabled]);
 
   const spotifyApi = async (path) => {
     if (!spotifyToken?.accessToken) throw new Error("Нет токена Spotify");
@@ -295,7 +370,10 @@ function App() {
   useEffect(() => { loadSpotifyHome(); }, [spotifyToken?.accessToken]);
 
   useEffect(() => {
-    if (!spotifyActivePlaylistId || !spotifyToken?.accessToken) { setSpotifyTracks([]); return; }
+    if (!spotifyActivePlaylistId || !spotifyToken?.accessToken) {
+      setSpotifyTracks([]);
+      return;
+    }
     const loadTracks = async () => {
       setSpotifyLoading(true);
       setSpotifyError("");
@@ -354,18 +432,9 @@ function App() {
     const password = authForm.password;
 
     if (authMode === "register") {
-      if (!username || !email || !password) {
-        setAuthError("Заполни все поля.");
-        return;
-      }
-      if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
-        setAuthError("Такой ник уже занят.");
-        return;
-      }
-      if (users.some((u) => u.email === email)) {
-        setAuthError("Пользователь с таким email уже существует.");
-        return;
-      }
+      if (!username || !email || !password) return setAuthError("Заполни все поля.");
+      if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) return setAuthError("Такой ник уже занят.");
+      if (users.some((u) => u.email === email)) return setAuthError("Пользователь с таким email уже существует.");
       let role = users.length === 0 ? "admin" : "user";
       if (username.toLowerCase() === "horonsky") role = "admin";
       const user = {
@@ -375,7 +444,7 @@ function App() {
         password,
         role,
         avatar: "https://placehold.co/160x160/000/fff?text=Avatar",
-        banner: "https://placehold.co/1280x500/000/fff?text=Banner+1280x500",
+        banner: "https://placehold.co/1280x500/000/fff?text=Banner",
         friends: [],
         nicknameChangedAt: 0,
         nickStyle: { color: "#ffffff", glow: false }
@@ -386,30 +455,16 @@ function App() {
       return;
     }
 
-    if (!password) {
-      setAuthError("Введи пароль.");
-      return;
-    }
-
+    if (!password) return setAuthError("Введи пароль.");
     let found = null;
     if (loginMethod === "email") {
-      if (!email) {
-        setAuthError("Введи email.");
-        return;
-      }
+      if (!email) return setAuthError("Введи email.");
       found = users.find((u) => u.email === email && u.password === password);
     } else {
-      if (!username) {
-        setAuthError("Введи логин.");
-        return;
-      }
+      if (!username) return setAuthError("Введи логин.");
       found = users.find((u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
     }
-
-    if (!found) {
-      setAuthError("Неверные данные для входа.");
-      return;
-    }
+    if (!found) return setAuthError("Неверные данные для входа.");
     setSession({ userId: found.id });
     setAuthForm({ username: "", email: "", password: "" });
   };
@@ -417,9 +472,9 @@ function App() {
   const onLogout = () => {
     setSession(null);
     setAuthMode("login");
-    setAuthError("");
     setViewedProfileId(null);
     setEditProfileMode(false);
+    setProfileMenuOpen(false);
   };
 
   const updateCurrentUser = (patch) => {
@@ -446,6 +501,7 @@ function App() {
     setViewedProfileId(id);
     setActiveView("profile");
     setEditProfileMode(false);
+    setProfileMenuOpen(false);
     setProfileError("");
     setProfileMessage("");
   };
@@ -457,23 +513,16 @@ function App() {
 
   const changeNickname = () => {
     if (!currentUser) return;
-    setProfileError("");
-    setProfileMessage("");
     const nick = newNick.trim();
     if (!nick) return setProfileError("Ник не может быть пустым.");
-    if (confirmPassword !== currentUser.password) {
-      return setProfileError("Для смены ника введи текущий пароль.");
-    }
-    if (users.some((u) => u.id !== currentUser.id && u.username.toLowerCase() === nick.toLowerCase())) {
-      return setProfileError("Такой ник уже занят.");
-    }
+    if (confirmPassword !== currentUser.password) return setProfileError("Для смены ника введи текущий пароль.");
+    if (users.some((u) => u.id !== currentUser.id && u.username.toLowerCase() === nick.toLowerCase())) return setProfileError("Такой ник уже занят.");
     const wait = NICK_COOLDOWN - (Date.now() - (currentUser.nicknameChangedAt || 0));
-    if (currentUser.nicknameChangedAt && wait > 0) {
-      return setProfileError(`Ник можно менять раз в 12 часов. Осталось ~${Math.ceil(wait / 3600000)} ч.`);
-    }
+    if (currentUser.nicknameChangedAt && wait > 0) return setProfileError(`Ник можно менять раз в 12 часов. Осталось ~${Math.ceil(wait / 3600000)} ч.`);
     updateCurrentUser({ username: nick, nicknameChangedAt: Date.now() });
     setNewNick("");
     setConfirmPassword("");
+    setProfileError("");
     setProfileMessage("Ник обновлен.");
   };
 
@@ -481,10 +530,7 @@ function App() {
     if (!currentUser || !file) return;
     const privileged = currentUser.role === "admin" || currentUser.role === "moderator";
     const allowed = privileged ? ["image/png", "image/jpeg", "image/gif"] : ["image/png", "image/jpeg"];
-    if (!allowed.includes(file.type)) {
-      setProfileError(privileged ? "Можно загружать PNG, JPEG, GIF." : "Можно загружать только PNG или JPEG.");
-      return;
-    }
+    if (!allowed.includes(file.type)) return setProfileError(privileged ? "Можно PNG, JPEG, GIF." : "Можно только PNG/JPEG.");
     const reader = new FileReader();
     reader.onload = (e) => {
       const value = e.target?.result;
@@ -497,11 +543,6 @@ function App() {
     reader.readAsDataURL(file);
   };
 
-  const tracks = data?.tracks || [];
-  const playlists = data?.playlists || [];
-  const trackIndex = tracks.findIndex((t) => t.id === currentTrackId);
-  const currentTrack = tracks[trackIndex] || tracks[0] || null;
-
   const filteredTracks = useMemo(() => {
     const t = query.trim().toLowerCase();
     if (!t) return [];
@@ -511,98 +552,52 @@ function App() {
   const filteredUsers = useMemo(() => {
     const t = query.trim().toLowerCase();
     if (!t) return [];
-    return users.filter((u) => u.username.toLowerCase().includes(t) || u.email.toLowerCase().includes(t));
+    return users.filter((u) => u.username.toLowerCase().includes(t));
   }, [users, query]);
 
-  const waveTracks = useMemo(() => [...tracks].sort(() => Math.random() - 0.5).slice(0, 6), [tracks]);
-
-  const today = new Date().toISOString().slice(0, 10);
-  const newTracks = tracks.filter((t) => !t.isUpcoming && t.releaseDate <= today);
-  const upcomingTracks = tracks.filter((t) => t.isUpcoming || t.releaseDate > today);
-  const collectionTracks = tracks.filter((t) => data?.user?.collectionTrackIds?.includes(t.id));
-
-  const activePlaylist = playlists.find((p) => p.id === activePlaylistId) || null;
-  const activePlaylistTracks = activePlaylist ? activePlaylist.trackIds.map((id) => tracks.find((t) => t.id === id)).filter(Boolean) : [];
+  const myFriends = useMemo(() => users.filter((u) => currentUser?.friends.includes(u.id)), [users, currentUser]);
 
   const playTrackById = (id) => {
     setCurrentTrackId(id);
     setTimeout(() => {
       if (!audioRef.current) return;
+      ensureAudioGraph();
       audioRef.current.play().catch(() => {});
+      if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
       setIsPlaying(true);
     }, 0);
   };
 
-  const toggleLike = () => {
-    if (!currentTrack) return;
-    setData((prev) => ({ ...prev, tracks: prev.tracks.map((t) => t.id === currentTrack.id ? { ...t, liked: !t.liked } : t) }));
-  };
-
   const onPlayPause = () => {
     if (!audioRef.current || !currentTrack) return;
+    ensureAudioGraph();
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
-    } else {
-      audioRef.current.play().catch(() => {});
-      setIsPlaying(true);
+      return;
     }
+    audioRef.current.play().catch(() => {});
+    if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
+    setIsPlaying(true);
   };
 
-  const onPrev = () => {
-    if (!tracks.length) return;
-    const ni = trackIndex <= 0 ? tracks.length - 1 : trackIndex - 1;
-    playTrackById(tracks[ni].id);
-  };
-
-  const onNext = () => {
-    if (!tracks.length) return;
-    const ni = trackIndex >= tracks.length - 1 ? 0 : trackIndex + 1;
-    playTrackById(tracks[ni].id);
+  const onStop = () => {
+    if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.currentTime = 0;
+    setProgress(0);
+    setIsPlaying(false);
   };
 
   const addCurrentTrackToPlaylist = () => {
     if (!currentTrack || !selectedPlaylistId) return;
-    setData((prev) => ({
-      ...prev,
-      playlists: prev.playlists.map((p) => {
-        if (p.id !== selectedPlaylistId) return p;
-        if (p.trackIds.includes(currentTrack.id)) return p;
-        return { ...p, trackIds: [...p.trackIds, currentTrack.id] };
-      })
-    }));
+    setData((prev) => ({ ...prev, playlists: prev.playlists.map((p) => p.id !== selectedPlaylistId ? p : p.trackIds.includes(currentTrack.id) ? p : { ...p, trackIds: [...p.trackIds, currentTrack.id] }) }));
+    setProfileMessage("Трек добавлен в плейлист.");
   };
 
-  const exportJson = () => {
-    if (!data) return;
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "chance-music-data.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const importJson = (file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const imported = JSON.parse(e.target.result);
-        setData(imported);
-        setCurrentTrackId(imported.tracks?.[0]?.id || null);
-        setActivePlaylistId(imported.playlists?.[0]?.id || "");
-      } catch {
-        alert("Некорректный JSON-файл");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const resetStorage = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    location.reload();
+  const updateEqCustomGain = (idx, value) => {
+    setEqPreset("custom");
+    setEqCustomGains((prev) => prev.map((x, i) => (i === idx ? value : x)));
   };
 
   if (!currentUser) {
@@ -611,19 +606,16 @@ function App() {
         <div className="auth-card">
           <img src="./logo.png" alt="logo" className="auth-logo" />
           <h1>{SITE_NAME}</h1>
-
           <div className="auth-tabs">
             <button className={`menu-btn ${authMode === "login" ? "active" : ""}`} onClick={() => setAuthMode("login")}>Вход</button>
             <button className={`menu-btn ${authMode === "register" ? "active" : ""}`} onClick={() => setAuthMode("register")}>Регистрация</button>
           </div>
-
           {authMode === "login" && (
             <div className="row">
               <button className={`small-btn ${loginMethod === "username" ? "active" : ""}`} type="button" onClick={() => setLoginMethod("username")}>По логину</button>
               <button className={`small-btn ${loginMethod === "email" ? "active" : ""}`} type="button" onClick={() => setLoginMethod("email")}>По почте</button>
             </div>
           )}
-
           <form className="auth-form auth-form-lower" onSubmit={onAuthSubmit}>
             {(authMode === "register" || (authMode === "login" && loginMethod === "username")) && (
               <input className="field" placeholder={authMode === "register" ? "Ник" : "Логин"} value={authForm.username} onChange={(e) => setAuthForm((p) => ({ ...p, username: e.target.value }))} />
@@ -647,15 +639,9 @@ function App() {
       <img className="cover" src={track.cover} alt={track.title} />
       <h3>{track.title}</h3>
       <p className="muted">{track.artist}</p>
-      <div className="row">
-        <span className="badge">{track.releaseDate}</span>
-        {track.isUpcoming ? <span className="badge">Скоро</span> : <span className="badge">Новый</span>}
-      </div>
       <button className="small-btn" onClick={() => playTrackById(track.id)}>Слушать</button>
     </div>
   );
-
-  const myFriends = users.filter((u) => currentUser.friends.includes(u.id));
 
   return (
     <div className="app">
@@ -667,24 +653,19 @@ function App() {
         <nav className="menu">
           <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}>Поиск</button>
           <button className={`menu-btn ${activeView === "home" ? "active" : ""}`} onClick={() => { setActiveView("home"); setViewedProfileId(null); }}>Главная</button>
-          <button className={`menu-btn ${activeView === "collection" ? "active" : ""}`} onClick={() => setActiveView("collection")}>Коллекция</button>
+          <button className={`menu-btn ${activeView === "collection" ? "active" : ""}`} onClick={() => setActiveView("collection")}>Spotify</button>
           <button className={`menu-btn ${activeView === "developers" ? "active" : ""}`} onClick={() => setActiveView("developers")}>Разработчики</button>
-          <button className={`menu-btn profile-nav ${activeView === "profile" ? "active" : ""}`} onClick={() => { setActiveView("profile"); setViewedProfileId(null); setEditProfileMode(false); }}>Профиль</button>
         </nav>
 
         <div className="user-box">
           <p className="muted">Роль: <span className="role-tag">{currentUser.role}</span></p>
           <p className="muted">Пользователь: <Nick user={currentUser} /></p>
         </div>
+
+        <button className={`menu-btn profile-nav ${activeView === "profile" ? "active" : ""}`} onClick={() => { setActiveView("profile"); setViewedProfileId(null); setEditProfileMode(false); }}>Профиль</button>
       </aside>
 
       <main className="main">
-        <div className="toolbar">
-          <button className="small-btn" onClick={exportJson}>Экспорт JSON</button>
-          <label className="small-btn">Импорт JSON<input hidden type="file" accept="application/json" onChange={(e) => importJson(e.target.files?.[0])} /></label>
-          <button className="small-btn" onClick={resetStorage}>Сбросить localStorage</button>
-        </div>
-
         {activeView === "search" && (
           <section>
             <h2 className="section-title">Поиск</h2>
@@ -712,70 +693,52 @@ function App() {
 
         {activeView === "home" && (
           <section>
-            <h2 className="section-title">Дай шанс этим трекам</h2>
-            <div className="grid">{waveTracks.map((t) => <TrackCard key={`w-${t.id}`} track={t} />)}</div>
-            <h2 className="section-title" style={{ marginTop: 24 }}>Новые треки</h2>
-            <div className="grid">{newTracks.map((t) => <TrackCard key={t.id} track={t} />)}</div>
-            <h2 className="section-title" style={{ marginTop: 24 }}>Скоро выйдут</h2>
-            <div className="grid">{upcomingTracks.map((t) => <TrackCard key={t.id} track={t} />)}</div>
+            <h2 className="section-title">Пробный трек</h2>
+            <div className="grid">{tracks.map((t) => <TrackCard key={t.id} track={t} />)}</div>
           </section>
         )}
 
         {activeView === "profile" && profileUser && (
           <section>
             <h2 className="section-title">Профиль</h2>
-            <div className="profile-banner-wrap"><img src={profileUser.banner} alt="banner" className="profile-banner" /></div>
-            <div className="card" style={{ marginTop: 12 }}>
-              <div className="row">
-                <img className="avatar" src={profileUser.avatar} alt="avatar" />
-                <div>
-                  <Nick user={profileUser} />
-                  <p className="muted">{profileUser.email}</p>
-                  <p className="muted">Роль: {profileUser.role}</p>
-                </div>
+            <div className="profile-banner-wrap">
+              <img src={profileUser.banner} alt="banner" className="profile-banner" />
+              <div className="profile-banner-center">
+                <img className="profile-banner-avatar" src={profileUser.avatar} alt="avatar" />
+                <div className="profile-banner-nick"><Nick user={profileUser} /></div>
+                <div className="profile-banner-role">{profileUser.role}</div>
               </div>
-
-              {profileUser.id !== currentUser.id && (
-                <button className="small-btn" onClick={() => addFriend(profileUser.id)}>{currentUser.friends.includes(profileUser.id) ? "Уже в друзьях" : "Добавить в друзья"}</button>
-              )}
-
               {profileUser.id === currentUser.id && (
-                <>
-                  {!editProfileMode && <div className="row"><button className="small-btn" onClick={() => setEditProfileMode(true)}>Редактировать профиль</button><button className="small-btn" onClick={onLogout}>Выйти из аккаунта</button></div>}
-
-                  {editProfileMode && (
-                    <div className="card" style={{ background: "#0b0b0b" }}>
-                      <label className="muted">Ник (можно менять 1 раз в 12 часов)</label>
-                      <input className="field" value={newNick} onChange={(e) => setNewNick(e.target.value)} placeholder="Новый ник" />
-                      <label className="muted">Подтверди текущий пароль для смены ника</label>
-                      <input className="field" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Текущий пароль" />
-                      <button className="small-btn" onClick={changeNickname}>Обновить ник</button>
-
-                      <label className="muted">Аватар (PNG/JPEG{currentUser.role === "admin" || currentUser.role === "moderator" ? "/GIF" : ""})</label>
-                      <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("avatar", e.target.files?.[0])} />
-
-                      <label className="muted">Обложка профиля (рекомендуется 1280x500)</label>
-                      <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("banner", e.target.files?.[0])} />
-
-                      {(currentUser.role === "admin" || currentUser.role === "moderator") && (
-                        <div className="row">
-                          <input className="field" type="color" value={currentUser.nickStyle.color || "#ffffff"} onChange={(e) => updateCurrentUser({ nickStyle: { ...currentUser.nickStyle, color: e.target.value } })} />
-                          <label className="muted row"><input type="checkbox" checked={Boolean(currentUser.nickStyle.glow)} onChange={(e) => updateCurrentUser({ nickStyle: { ...currentUser.nickStyle, glow: e.target.checked } })} />Свечение ника</label>
-                        </div>
-                      )}
-
-                      <div className="row">
-                        <button className="small-btn" onClick={() => setEditProfileMode(false)}>Готово</button>
-                        <button className="small-btn" onClick={onLogout}>Выйти из аккаунта</button>
-                      </div>
+                <div className="profile-menu">
+                  <button className="gear-btn" onClick={() => setProfileMenuOpen((v) => !v)} title="Настройки профиля">⚙</button>
+                  {profileMenuOpen && (
+                    <div className="profile-menu-popover">
+                      <button className="small-btn" onClick={() => { setEditProfileMode((v) => !v); setProfileMenuOpen(false); }}>{editProfileMode ? "Закрыть редактирование" : "Редактировать профиль"}</button>
+                      <button className="small-btn" onClick={onLogout}>Выйти из аккаунта</button>
                     </div>
                   )}
-                </>
+                </div>
               )}
-
-              {profileError && <p className="spotify-error">{profileError}</p>}
-              {profileMessage && <p className="ok-msg">{profileMessage}</p>}
             </div>
+
+            {profileUser.id !== currentUser.id && <div className="row" style={{ marginTop: 12 }}><button className="small-btn" onClick={() => addFriend(profileUser.id)}>{currentUser.friends.includes(profileUser.id) ? "Уже в друзьях" : "Добавить в друзья"}</button></div>}
+
+            {profileUser.id === currentUser.id && editProfileMode && (
+              <div className="card" style={{ marginTop: 12, background: "#0b0b0b" }}>
+                <label className="muted">Ник (1 раз в 12 часов)</label>
+                <input className="field" value={newNick} onChange={(e) => setNewNick(e.target.value)} placeholder="Новый ник" />
+                <label className="muted">Текущий пароль для смены ника</label>
+                <input className="field" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Текущий пароль" />
+                <button className="small-btn" onClick={changeNickname}>Обновить ник</button>
+                <label className="muted">Аватар (PNG/JPEG{currentUser.role === "admin" || currentUser.role === "moderator" ? "/GIF" : ""})</label>
+                <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("avatar", e.target.files?.[0])} />
+                <label className="muted">Обложка профиля (точно 1280x500)</label>
+                <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("banner", e.target.files?.[0])} />
+              </div>
+            )}
+
+            {profileError && <p className="spotify-error" style={{ marginTop: 12 }}>{profileError}</p>}
+            {profileMessage && <p className="ok-msg" style={{ marginTop: 12 }}>{profileMessage}</p>}
 
             {profileUser.id === currentUser.id && (
               <>
@@ -797,7 +760,6 @@ function App() {
                       {users.map((u) => (
                         <div className="card" key={u.id}>
                           <button className="link-btn" onClick={() => openProfile(u.id)}><Nick user={u} /></button>
-                          <p className="muted">{u.email}</p>
                           <select className="field" value={u.role} onChange={(e) => setRole(u.id, e.target.value)}>
                             <option value="user">user</option>
                             <option value="moderator">moderator</option>
@@ -841,33 +803,21 @@ function App() {
               {spotifyError && <p className="spotify-error">{spotifyError}</p>}
               {spotifyLoading && <p className="muted">Загрузка Spotify...</p>}
             </div>
-
             {spotifyPlaylists.length > 0 && <div className="playlist-list" style={{ marginTop: 12 }}>{spotifyPlaylists.map((p) => <div key={p.id} className={`card ${spotifyActivePlaylistId === p.id ? "playlist-active" : ""}`}><img className="cover" src={p.images?.[0]?.url || "https://placehold.co/600x600/000/fff?text=Spotify"} alt={p.name} /><h3>{p.name}</h3><div className="row"><button className="small-btn" onClick={() => setSpotifyActivePlaylistId(p.id)}>Открыть</button><a className="small-btn" href={p.external_urls?.spotify} target="_blank" rel="noreferrer">В Spotify</a></div></div>)}</div>}
             {spotifyActivePlaylistId && <div className="card" style={{ marginTop: 12 }}><h3>Треки Spotify плейлиста</h3>{spotifyTracks.length === 0 ? <p className="muted">Нет треков или доступ ограничен.</p> : spotifyTracks.map((t) => <div key={t.id || t.uri} className="playlist-track-row"><div><div>{t.name}</div><div className="muted">{(t.artists || []).map((a) => a.name).join(", ")}</div></div><div className="row">{t.preview_url && <audio controls src={t.preview_url} preload="none" />}<a className="small-btn" href={t.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть</a></div></div>)}</div>}
-
-            <h2 className="section-title" style={{ marginTop: 20 }}>Мои треки</h2>
-            <div className="grid">{collectionTracks.map((t) => <TrackCard key={t.id} track={t} />)}</div>
-
-            <h2 className="section-title" style={{ marginTop: 20 }}>Локальные плейлисты</h2>
-            <div className="playlist-list">{playlists.map((p) => <div key={p.id} className={`card ${p.id === activePlaylistId ? "playlist-active" : ""}`} onClick={() => setActivePlaylistId(p.id)}><img className="cover" src={p.cover} alt={p.name} /><h3>{p.name}</h3><button className="small-btn" onClick={(e) => { e.stopPropagation(); if (p.trackIds?.length) playTrackById(p.trackIds[0]); }}>Слушать плейлист</button><p className="muted">Треков: {p.trackIds?.length || 0}</p></div>)}</div>
-            {activePlaylist && <div className="card" style={{ marginTop: 12 }}><h3>Треки плейлиста: {activePlaylist.name}</h3>{activePlaylistTracks.map((t) => <div key={t.id} className="playlist-track-row"><div><div>{t.title}</div><div className="muted">{t.artist}</div></div><button className="small-btn" onClick={() => playTrackById(t.id)}>Слушать</button></div>)}</div>}
           </section>
         )}
       </main>
 
       <footer className="player">
+        <div className="player-progress-wrap"><input className="progress" type="range" min="0" max={duration || 0} step="0.1" value={progress} onChange={(e) => { const n = Number(e.target.value); setProgress(n); if (audioRef.current) audioRef.current.currentTime = n; }} /></div>
         <div className="player-left">{currentTrack ? <><img className="player-cover" src={currentTrack.cover} alt={currentTrack.title} /><div><div>{currentTrack.title}</div><div className="muted">{currentTrack.artist}</div></div></> : <div className="muted">Трек не выбран</div>}</div>
-        <div className="player-center"><div className="controls"><button className="icon-btn" onClick={onPrev}>◀◀</button><button className="icon-btn" onClick={onPlayPause}>{isPlaying ? "❚❚" : "▶"}</button><button className="icon-btn" onClick={onNext}>▶▶</button><button className="icon-btn" onClick={toggleLike}>{currentTrack?.liked ? "♥" : "♡"}</button></div><input className="progress" type="range" min="0" max={duration || 0} step="0.1" value={progress} onChange={(e) => { const n = Number(e.target.value); setProgress(n); if (audioRef.current) audioRef.current.currentTime = n; }} /><div className="muted" style={{ textAlign: "center" }}>{formatTime(progress)} / {formatTime(duration)}</div></div>
-        <div className="player-right"><textarea className="lyrics-input" value={currentTrack?.lyrics || ""} onChange={(e) => { if (!currentTrack) return; setData((prev) => ({ ...prev, tracks: prev.tracks.map((t) => t.id === currentTrack.id ? { ...t, lyrics: e.target.value } : t) })); }} placeholder="Текст трека" /><select className="small-btn" value={selectedPlaylistId} onChange={(e) => setSelectedPlaylistId(e.target.value)}><option value="">Выберите плейлист</option>{playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="small-btn" onClick={addCurrentTrackToPlaylist}>Добавить в плейлист</button><button className="small-btn" onClick={() => setEqualizerOpen((v) => !v)}>Формат файла</button><select className="small-btn" value={currentTrack?.format || "MP3"} onChange={(e) => { if (!currentTrack) return; setData((prev) => ({ ...prev, tracks: prev.tracks.map((t) => t.id === currentTrack.id ? { ...t, format: e.target.value } : t) })); }}><option>MP3</option><option>FLAC</option><option>WAV</option><option>AAC</option></select><input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} />{equalizerOpen && <div className="eq-panel"><label>Bass <input type="range" min="-10" max="10" defaultValue="0" /></label><label>Mid <input type="range" min="-10" max="10" defaultValue="0" /></label><label>High <input type="range" min="-10" max="10" defaultValue="0" /></label></div>}</div>
-        <audio ref={audioRef} src={currentTrack?.audio || ""} onLoadedMetadata={(e) => { setDuration(e.currentTarget.duration || 0); setProgress(0); }} onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime || 0)} onEnded={onNext} />
+        <div className="player-center"><div className="controls centered-controls"><button className="icon-btn" onClick={onPlayPause}>{isPlaying ? "Пауза" : "Пуск"}</button><button className="icon-btn" onClick={onStop}>Стоп</button></div><div className="muted" style={{ textAlign: "center" }}>{formatTime(progress)} / {formatTime(duration)}</div></div>
+        <div className="player-right"><input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} /><div className="player-menu-wrap"><button className="icon-btn dots-btn" onClick={() => setPlayerMenuOpen((v) => !v)}>...</button>{playerMenuOpen && <div className="player-menu"><div className="menu-block"><div className="menu-title">Добавить в плейлист</div><select className="small-btn" value={selectedPlaylistId} onChange={(e) => setSelectedPlaylistId(e.target.value)}><option value="">Выберите плейлист</option>{playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="small-btn" onClick={addCurrentTrackToPlaylist}>Добавить</button></div><div className="menu-block"><div className="menu-title">Качество</div><div className="quality-pill">{detectAudioQuality(currentTrack)}</div></div><div className="menu-block"><button className="small-btn" onClick={() => setEqOpen((v) => !v)}>{eqOpen ? "Скрыть эквалайзер" : "Открыть эквалайзер"}</button></div>{eqOpen && <div className="eq-panel-modern"><div className="eq-top-row"><h4>Эквалайзер</h4><label className="eq-switch"><input type="checkbox" checked={eqEnabled} onChange={(e) => setEqEnabled(e.target.checked)} /><span className="eq-switch-ui" /></label></div><div className="eq-grid">{EQ_FREQUENCIES.map((freq, idx) => <label key={freq} className="eq-band"><input type="range" min="-12" max="12" step="1" value={eqPreset === "custom" ? eqCustomGains[idx] : EQ_PRESET_GAINS[idx]} onChange={(e) => updateEqCustomGain(idx, Number(e.target.value))} disabled={!eqEnabled} /><span>{freq >= 1000 ? `${Math.round(freq / 1000)}k` : freq}</span></label>)}</div><select className="eq-preset-select" value={eqPreset} onChange={(e) => setEqPreset(e.target.value)}><option value="studio">Сцена Live</option><option value="custom">Своя настройка</option></select></div>}</div>}</div></div>
+        <audio ref={audioRef} src={currentTrack?.audio || ""} onLoadedMetadata={(e) => { setDuration(e.currentTarget.duration || 0); setProgress(0); }} onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime || 0)} onEnded={onStop} />
       </footer>
     </div>
   );
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-
-
-
-
-
