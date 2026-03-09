@@ -32,6 +32,15 @@ const SAMPLE_TRACK = {
 const EQ_FREQUENCIES = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
 const EQ_PRESET_GAINS = [0, 0, -6, -6, -6, -6, -6, -6, -5, -5];
 const SITE_NAME = "Шанс | Music";
+const ICONS = {
+  play: "./icons/icon_play.svg",
+  pause: "./icons/icon_pause.svg",
+  volume: "./icons/icon_volume.svg",
+  more: "./icons/icon_more.svg",
+  likeOutline: "./icons/icon_like_outline.svg",
+  likeFilled: "./icons/icon_like_filled.svg",
+  likeBroken: "./icons/icon_like_broken.svg"
+};
 const DEV_USERS = [
   {
     id: "dev_jessew1lliams",
@@ -208,6 +217,7 @@ function App() {
   const [playerMenuOpen, setPlayerMenuOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [playerNotice, setPlayerNotice] = useState("");
+  const [likeHover, setLikeHover] = useState(false);
 
   const [eqOpen, setEqOpen] = useState(false);
   const [eqEnabled, setEqEnabled] = useState(true);
@@ -732,6 +742,14 @@ function App() {
     setProfileMessage("Трек добавлен в плейлист.");
   };
 
+  const setCurrentTrackLiked = (liked) => {
+    if (!currentTrack) return;
+    setData((prev) => ({
+      ...prev,
+      tracks: (prev.tracks || []).map((t) => (t.id === currentTrack.id ? { ...t, liked } : t))
+    }));
+  };
+
   const updateEqCustomGain = (idx, value) => {
     setEqPreset("custom");
     setEqCustomGains((prev) => prev.map((x, i) => (i === idx ? value : x)));
@@ -1073,7 +1091,7 @@ function App() {
         <div className="player-center">
           <div className="controls centered-controls">
             <button className="icon-btn play-btn" onClick={onPlayPause} title={isPlaying ? "Пауза" : "Пуск"}>
-              {isPlaying ? "❚❚" : "▶"}
+              <img className="icon-img play-icon-img" src={isPlaying ? ICONS.pause : ICONS.play} alt={isPlaying ? "Пауза" : "Пуск"} />
             </button>
           </div>
           <div className="muted player-time-left">Осталось: {formatTime(Math.max(0, (duration || 0) - (progress || 0)))}</div>
@@ -1081,12 +1099,28 @@ function App() {
         </div>
 
         <div className="player-right">
+          <button
+            className="icon-btn like-btn"
+            type="button"
+            title={currentTrack?.liked ? "Убрать лайк" : "Поставить лайк"}
+            onMouseEnter={() => setLikeHover(true)}
+            onMouseLeave={() => setLikeHover(false)}
+            onClick={() => setCurrentTrackLiked(!currentTrack?.liked)}
+          >
+            <span className={`like-icon-layer ${!currentTrack?.liked && !likeHover ? "show" : ""}`}>
+              <img className="icon-img" src={ICONS.likeOutline} alt="Не лайкнуто" />
+            </span>
+            <span className={`like-icon-layer ${((!currentTrack?.liked && likeHover) || (currentTrack?.liked && !likeHover)) ? "show" : ""}`}>
+              <img className="icon-img" src={ICONS.likeFilled} alt="Лайкнуто" />
+            </span>
+            <span className={`like-icon-layer ${(currentTrack?.liked && likeHover) ? "show" : ""}`}>
+              <img className="icon-img" src={ICONS.likeBroken} alt="Убрать лайк" />
+            </span>
+          </button>
+
           <div className="volume-wrap" onMouseEnter={() => setVolumeOpen(true)} onMouseLeave={() => setVolumeOpen(false)}>
             <button className="icon-btn volume-btn" type="button" title="Громкость">
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path fill="currentColor" d="M14 4.5a1 1 0 0 1 1.7.7v13.6a1 1 0 0 1-1.7.7L9.2 15H6a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h3.2L14 4.5Z" />
-                <path fill="currentColor" d="M18.3 8.7a1 1 0 1 1 1.4-1.4A6 6 0 0 1 21.5 12a6 6 0 0 1-1.8 4.7a1 1 0 0 1-1.4-1.4A4 4 0 0 0 19.5 12a4 4 0 0 0-1.2-3.3Z" />
-              </svg>
+              <img className="icon-img" src={ICONS.volume} alt="Громкость" />
             </button>
             <div className={`volume-pop ${volumeOpen ? "open" : ""}`}>
               <input
@@ -1102,7 +1136,9 @@ function App() {
           </div>
 
           <div className="player-menu-wrap" ref={playerMenuRef}>
-            <button className="icon-btn dots-btn" onClick={() => setPlayerMenuOpen((v) => !v)} title="Настрой себе свой звук">...</button>
+            <button className="icon-btn dots-btn" onClick={() => setPlayerMenuOpen((v) => !v)} title="Настрой себе свой звук">
+              <img className="icon-img dots-icon-img" src={ICONS.more} alt="Меню" />
+            </button>
             {playerMenuOpen && (
               <div className="player-menu">
                 <div className="player-menu-header">
@@ -1212,6 +1248,13 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
+
+
+
+
 
 
 

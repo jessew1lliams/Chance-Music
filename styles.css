@@ -197,10 +197,25 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .player-center { flex-direction: column; align-items: center; }
 .controls.centered-controls { display: flex; justify-content: center; gap: 14px; }
 .icon-btn { border: 0; background: transparent; color: #fff; min-width: 44px; min-height: 36px; cursor: pointer; padding: 0; }
-.play-btn { font-size: 28px; font-weight: 700; letter-spacing: 0.02em; min-width: 52px; min-height: 42px; }
+.icon-img { width: 22px; height: 22px; display: block; object-fit: contain; }
+.play-btn { min-width: 52px; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; }
+.play-icon-img { width: 30px; height: 30px; }
 .player-time-left { text-align: center; font-size: 12px; margin-top: 1px; }
 
-.player-right { justify-content: flex-end; position: relative; }
+.player-right { justify-content: flex-end; position: relative; gap: 10px; }
+.like-btn { position: relative; width: 28px; height: 28px; min-width: 28px; min-height: 28px; }
+.like-icon-layer {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity .2s ease, transform .2s ease;
+}
+.like-icon-layer.show { opacity: 1; transform: scale(1); }
+.like-btn .icon-img { width: 22px; height: 22px; }
 .volume-wrap { position: relative; }
 .volume-btn { min-width: 36px; min-height: 36px; opacity: 0.96; }
 .volume-pop {
@@ -240,7 +255,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 
 .player-menu-wrap { position: relative; }
-.dots-btn { font-size: 34px; font-weight: 900; line-height: 0.75; min-width: 40px; opacity: 0.95; }
+.dots-btn { min-width: 40px; min-height: 36px; opacity: 0.95; }
+.dots-icon-img { width: 28px; height: 28px; }
 .player-menu {
   position: absolute;
   right: 0;
@@ -331,6 +347,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .main { padding-bottom: 380px; }
   .eq-grid { grid-template-columns: repeat(5, minmax(26px, 1fr)); }
 }
+
 
 
 
