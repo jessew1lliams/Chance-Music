@@ -1,8 +1,6 @@
 ﻿
 const { useEffect, useMemo, useRef, useState } = React;
 
-const STORAGE_KEY = "chance_music_data_v5";
-const SITE_NAME = "Шанс | Music";
 const AUTH_USERS_KEY = "chance_music_users_v3";
 const AUTH_SESSION_KEY = "chance_music_session_v3";
 const NICK_COOLDOWN = 12 * 60 * 60 * 1000;
@@ -152,6 +150,7 @@ function App() {
   const [loginMethod, setLoginMethod] = useState("username");
   const [authForm, setAuthForm] = useState({ username: "", handle: "", email: "", password: "" });
   const [authError, setAuthError] = useState("");
+  const [showAuthDevelopers, setShowAuthDevelopers] = useState(false);
 
   const [profileError, setProfileError] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
@@ -186,7 +185,6 @@ function App() {
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
-  const authDevelopersRef = useRef(null);
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
   const profileUser = useMemo(() => {
@@ -668,10 +666,12 @@ function App() {
             {authError && <p className="spotify-error">{authError}</p>}
             <button className="small-btn auth-submit" type="submit">{authMode === "login" ? "Войти" : "Создать аккаунт"}</button>
           </form>
-          <button className="auth-dev-btn" type="button" onClick={() => authDevelopersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Разработчики</button>
-          <div ref={authDevelopersRef} className="auth-developers">
-            <div>@jessew1lliams</div>
-            <div>@HORONSKY</div>
+          <div className="auth-bottom">
+            <button className="auth-dev-btn" type="button" onClick={() => setShowAuthDevelopers((v) => !v)}>Разработчики</button>
+            <div className={`auth-developers ${showAuthDevelopers ? "open" : ""}`}>
+              <div>@jessew1lliams</div>
+              <div>@HORONSKY</div>
+            </div>
           </div>
         </div>
       </div>
@@ -933,6 +933,7 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
 
 
 
