@@ -1,0 +1,77 @@
+﻿{
+  "site": {
+    "name": "Шанс | Music",
+    "logo": "https://placehold.co/64x64/111827/F9FAFB?text=LOGO"
+  },
+  "tracks": [
+    {
+      "id": "t1",
+      "title": "Midnight Waves",
+      "artist": "Nova Lane",
+      "cover": "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=600&q=80",
+      "audio": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      "releaseDate": "2026-02-25",
+      "isUpcoming": false,
+      "lyrics": "Город не спит, и мы летим сквозь свет...",
+      "liked": false,
+      "format": "MP3"
+    },
+    {
+      "id": "t2",
+      "title": "Neon Sky",
+      "artist": "Aster Void",
+      "cover": "https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=600&q=80",
+      "audio": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+      "releaseDate": "2026-03-05",
+      "isUpcoming": false,
+      "lyrics": "Неоновое небо зовет меня домой...",
+      "liked": true,
+      "format": "FLAC"
+    },
+    {
+      "id": "t3",
+      "title": "Cold Fire",
+      "artist": "Luna Drift",
+      "cover": "https://images.unsplash.com/photo-1507838153414-b4b713384a76?auto=format&fit=crop&w=600&q=80",
+      "audio": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+      "releaseDate": "2026-04-12",
+      "isUpcoming": true,
+      "lyrics": "Огонь внутри молчит, но светит ярче дня...",
+      "liked": false,
+      "format": "WAV"
+    },
+    {
+      "id": "t4",
+      "title": "Echo Parade",
+      "artist": "Polar Sun",
+      "cover": "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=600&q=80",
+      "audio": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+      "releaseDate": "2026-03-22",
+      "isUpcoming": true,
+      "lyrics": "Мы идем по эхо-улицам и слышим каждый шаг...",
+      "liked": false,
+      "format": "AAC"
+    }
+  ],
+  "playlists": [
+    {
+      "id": "p1",
+      "name": "Утренний драйв",
+      "cover": "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=600&q=80",
+      "description": "Энергичные треки, чтобы начать день.",
+      "descriptionVisible": true,
+      "trackIds": ["t1", "t2"]
+    },
+    {
+      "id": "p2",
+      "name": "Скоро в релизе",
+      "cover": "https://images.unsplash.com/photo-1460039230329-eb070fc6c77c?auto=format&fit=crop&w=600&q=80",
+      "description": "Треки, которые скоро выйдут.",
+      "descriptionVisible": false,
+      "trackIds": ["t3", "t4"]
+    }
+  ],
+  "user": {
+    "collectionTrackIds": ["t1", "t2", "t3"]
+  }
+}
