@@ -30,6 +30,7 @@ const SAMPLE_TRACK = {
 
 const EQ_FREQUENCIES = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
 const EQ_PRESET_GAINS = [0, 0, -6, -6, -6, -6, -6, -6, -5, -5];
+const SITE_NAME = "Шанс | Music";
 
 function formatTime(v) {
   if (!Number.isFinite(v)) return "0:00";
@@ -166,6 +167,7 @@ function App() {
   const [volume, setVolume] = useState(0.8);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
   const [playerMenuOpen, setPlayerMenuOpen] = useState(false);
+  const [volumeOpen, setVolumeOpen] = useState(false);
 
   const [eqOpen, setEqOpen] = useState(false);
   const [eqEnabled, setEqEnabled] = useState(true);
@@ -921,18 +923,158 @@ function App() {
         )}
       </main>
 
-      <footer className="player">
-        <div className="player-progress-wrap"><input className="progress" type="range" min="0" max={duration || 0} step="0.1" value={progress} onChange={(e) => { const n = Number(e.target.value); setProgress(n); if (audioRef.current) audioRef.current.currentTime = n; }} /></div>
-        <div className="player-left">{currentTrack ? <><img className="player-cover" src={currentTrack.cover} alt={currentTrack.title} /><div><div>{currentTrack.title}</div><div className="muted">{currentTrack.artist}</div></div></> : <div className="muted">Трек не выбран</div>}</div>
-        <div className="player-center"><div className="controls centered-controls"><button className="icon-btn" onClick={onPlayPause}>{isPlaying ? "Пауза" : "Пуск"}</button><button className="icon-btn" onClick={onStop}>Стоп</button></div><div className="muted" style={{ textAlign: "center" }}>{formatTime(progress)} / {formatTime(duration)}</div></div>
-        <div className="player-right"><input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(Number(e.target.value))} /><div className="player-menu-wrap"><button className="icon-btn dots-btn" onClick={() => setPlayerMenuOpen((v) => !v)}>...</button>{playerMenuOpen && <div className="player-menu"><div className="menu-block"><div className="menu-title">Добавить в плейлист</div><select className="small-btn" value={selectedPlaylistId} onChange={(e) => setSelectedPlaylistId(e.target.value)}><option value="">Выберите плейлист</option>{playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select><button className="small-btn" onClick={addCurrentTrackToPlaylist}>Добавить</button></div><div className="menu-block"><div className="menu-title">Качество</div><div className="quality-pill">{detectAudioQuality(currentTrack)}</div></div><div className="menu-block"><button className="small-btn" onClick={() => setEqOpen((v) => !v)}>{eqOpen ? "Скрыть эквалайзер" : "Открыть эквалайзер"}</button></div>{eqOpen && <div className="eq-panel-modern"><div className="eq-top-row"><h4>Эквалайзер</h4><label className="eq-switch"><input type="checkbox" checked={eqEnabled} onChange={(e) => setEqEnabled(e.target.checked)} /><span className="eq-switch-ui" /></label></div><div className="eq-grid">{EQ_FREQUENCIES.map((freq, idx) => <label key={freq} className="eq-band"><input type="range" min="-12" max="12" step="1" value={eqPreset === "custom" ? eqCustomGains[idx] : EQ_PRESET_GAINS[idx]} onChange={(e) => updateEqCustomGain(idx, Number(e.target.value))} disabled={!eqEnabled} /><span>{freq >= 1000 ? `${Math.round(freq / 1000)}k` : freq}</span></label>)}</div><select className="eq-preset-select" value={eqPreset} onChange={(e) => setEqPreset(e.target.value)}><option value="studio">Сцена Live</option><option value="custom">Своя настройка</option></select></div>}</div>}</div></div>
-        <audio ref={audioRef} src={currentTrack?.audio || ""} onLoadedMetadata={(e) => { setDuration(e.currentTarget.duration || 0); setProgress(0); }} onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime || 0)} onEnded={onStop} />
+            <footer className="player">
+        <div className="player-progress-wrap">
+          <input
+            className="progress"
+            type="range"
+            min="0"
+            max={duration || 0}
+            step="0.1"
+            value={progress}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              setProgress(n);
+              if (audioRef.current) audioRef.current.currentTime = n;
+            }}
+          />
+          <div className="progress-times">
+            <span>{formatTime(progress)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+        </div>
+
+        <div className="player-left">
+          {currentTrack ? (
+            <>
+              <img className="player-cover" src={currentTrack.cover} alt={currentTrack.title} />
+              <div>
+                <div>{currentTrack.title}</div>
+                <div className="muted">{currentTrack.artist}</div>
+              </div>
+            </>
+          ) : (
+            <div className="muted">Трек не выбран</div>
+          )}
+        </div>
+
+        <div className="player-center">
+          <div className="controls centered-controls">
+            <button className="icon-btn play-btn" onClick={onPlayPause} title={isPlaying ? "Пауза" : "Пуск"}>
+              {isPlaying ? "❚❚" : "▶"}
+            </button>
+          </div>
+          <div className="muted player-time-left">Осталось: {formatTime(Math.max(0, (duration || 0) - (progress || 0)))}</div>
+        </div>
+
+        <div className="player-right">
+          <div className="volume-wrap" onMouseEnter={() => setVolumeOpen(true)} onMouseLeave={() => setVolumeOpen(false)}>
+            <button className="icon-btn volume-btn" type="button" title="Громкость">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path fill="currentColor" d="M14 4.5a1 1 0 0 1 1.7.7v13.6a1 1 0 0 1-1.7.7L9.2 15H6a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h3.2L14 4.5Z" />
+                <path fill="currentColor" d="M18.3 8.7a1 1 0 1 1 1.4-1.4A6 6 0 0 1 21.5 12a6 6 0 0 1-1.8 4.7a1 1 0 0 1-1.4-1.4A4 4 0 0 0 19.5 12a4 4 0 0 0-1.2-3.3Z" />
+              </svg>
+            </button>
+            <div className={`volume-pop ${volumeOpen ? "open" : ""}`}>
+              <input
+                className="volume-slider"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={volume}
+                onChange={(e) => setVolume(Number(e.target.value))}
+              />
+            </div>
+          </div>
+
+          <div className="player-menu-wrap">
+            <button className="icon-btn dots-btn" onClick={() => setPlayerMenuOpen((v) => !v)} title="Меню плеера">⋯</button>
+            {playerMenuOpen && (
+              <div className="player-menu">
+                <div className="menu-block">
+                  <div className="menu-title">Добавить в плейлист</div>
+                  <select className="small-btn" value={selectedPlaylistId} onChange={(e) => setSelectedPlaylistId(e.target.value)}>
+                    <option value="">Выберите плейлист</option>
+                    {playlists.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <button className="small-btn" onClick={addCurrentTrackToPlaylist}>Добавить</button>
+                </div>
+
+                <div className="menu-block">
+                  <div className="menu-title">Формат файла</div>
+                  <div className="quality-pill">{detectAudioQuality(currentTrack)}</div>
+                </div>
+
+                <div className="menu-block">
+                  <button className="small-btn" onClick={() => setEqOpen((v) => !v)}>
+                    {eqOpen ? "Скрыть эквалайзер" : "Открыть эквалайзер"}
+                  </button>
+                </div>
+
+                {eqOpen && (
+                  <div className="eq-panel-modern">
+                    <div className="eq-top-row">
+                      <h4>Эквалайзер</h4>
+                      <label className="eq-switch">
+                        <input type="checkbox" checked={eqEnabled} onChange={(e) => setEqEnabled(e.target.checked)} />
+                        <span className="eq-switch-ui" />
+                      </label>
+                    </div>
+
+                    <div className="eq-grid">
+                      {EQ_FREQUENCIES.map((freq, idx) => (
+                        <label key={freq} className="eq-band">
+                          <input
+                            type="range"
+                            min="-12"
+                            max="12"
+                            step="1"
+                            value={eqPreset === "custom" ? eqCustomGains[idx] : EQ_PRESET_GAINS[idx]}
+                            onChange={(e) => updateEqCustomGain(idx, Number(e.target.value))}
+                            disabled={!eqEnabled}
+                          />
+                          <span>{freq >= 1000 ? `${Math.round(freq / 1000)}k` : freq}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <select className="eq-preset-select" value={eqPreset} onChange={(e) => setEqPreset(e.target.value)}>
+                      <option value="studio">Ночной баланс</option>
+                      <option value="custom">Своя настройка</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <audio
+          ref={audioRef}
+          src={currentTrack?.audio || ""}
+          onLoadedMetadata={(e) => {
+            setDuration(e.currentTarget.duration || 0);
+            setProgress(0);
+          }}
+          onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime || 0)}
+          onEnded={() => {
+            setIsPlaying(false);
+            setProgress(duration || 0);
+          }}
+        />
       </footer>
     </div>
   );
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
+
 
 
 
