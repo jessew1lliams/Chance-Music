@@ -848,7 +848,7 @@ function App() {
 
         {activeView === "collection" && (
           <section>
-            <h2 className="section-title spotify-title"><span className="spotify-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" role="img"><circle cx="12" cy="12" r="11" fill="#1db954"/><path d="M6.8 9.2c3.6-1.1 7.8-.8 10.8.9" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" fill="none"/><path d="M7.4 12.1c3-0.9 6.4-.6 8.9.8" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round" fill="none"/><path d="M8 15c2.3-.6 4.8-.4 6.8.6" stroke="#0a0a0a" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg></span><span>Spotify</span></h2>
+            <h2 className="section-title spotify-title"><span className="spotify-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" role="img"><circle cx="12" cy="12" r="11" fill="#1db954"/><path d="M6.8 9.2c3.6-1.1 7.8-.8 10.8.9" stroke="#0a0a0a" strokeWidth="1.8" strokeLinecap="round" fill="none"/><path d="M7.4 12.1c3-0.9 6.4-.6 8.9.8" stroke="#0a0a0a" strokeWidth="1.6" strokeLinecap="round" fill="none"/><path d="M8 15c2.3-.6 4.8-.4 6.8.6" stroke="#0a0a0a" strokeWidth="1.4" strokeLinecap="round" fill="none"/></svg></span><span>Spotify</span></h2>
 
             <div className="card">
               <div className="row">
@@ -989,7 +989,7 @@ function App() {
           </div>
 
           <div className="player-menu-wrap">
-            <button className="icon-btn dots-btn" onClick={() => setPlayerMenuOpen((v) => !v)} title="Меню плеера">⋯</button>
+            <button className="icon-btn dots-btn" onClick={() => setPlayerMenuOpen((v) => !v)} title="Меню плеера">...</button>
             {playerMenuOpen && (
               <div className="player-menu">
                 <div className="menu-block">
@@ -1071,6 +1071,8 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
 
 
 
