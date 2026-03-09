@@ -174,6 +174,7 @@ function App() {
   const [eqEnabled, setEqEnabled] = useState(true);
   const [eqPreset, setEqPreset] = useState("studio");
   const [eqCustomGains, setEqCustomGains] = useState([...EQ_PRESET_GAINS]);
+  const [eqLevelDb, setEqLevelDb] = useState(0);
 
   const [spotifyClientId, setSpotifyClientId] = useState("");
   const [spotifyRedirectUri, setSpotifyRedirectUri] = useState(`${window.location.origin}${window.location.pathname}`);
@@ -188,6 +189,8 @@ function App() {
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
+  const eqGainRef = useRef(null);
+  const playerMenuRef = useRef(null);
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
   const profileUser = useMemo(() => {
@@ -342,7 +345,10 @@ function App() {
     if (!audioRef.current || audioCtxRef.current) return;
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const source = ctx.createMediaElementSource(audioRef.current);
-    let prev = source;
+    const master = ctx.createGain();
+    master.gain.value = Math.pow(10, eqLevelDb / 20);
+    source.connect(master);
+    let prev = master;
     const filters = EQ_FREQUENCIES.map((freq, idx) => {
       const f = ctx.createBiquadFilter();
       f.type = idx === 0 ? "lowshelf" : idx === EQ_FREQUENCIES.length - 1 ? "highshelf" : "peaking";
@@ -355,6 +361,7 @@ function App() {
     prev.connect(ctx.destination);
     audioCtxRef.current = ctx;
     eqFiltersRef.current = filters;
+    eqGainRef.current = master;
   };
 
   useEffect(() => {
@@ -365,6 +372,23 @@ function App() {
       f.gain.setTargetAtTime(gain, audioCtxRef.current.currentTime, 0.05);
     });
   }, [eqPreset, eqCustomGains, eqEnabled]);
+
+  useEffect(() => {
+    if (!audioCtxRef.current || !eqGainRef.current) return;
+    const linear = Math.pow(10, eqLevelDb / 20);
+    eqGainRef.current.gain.setTargetAtTime(linear, audioCtxRef.current.currentTime, 0.05);
+  }, [eqLevelDb]);
+
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (!playerMenuOpen) return;
+      if (!playerMenuRef.current) return;
+      if (playerMenuRef.current.contains(event.target)) return;
+      setPlayerMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [playerMenuOpen]);
   const spotifyApi = async (path) => {
     if (!spotifyToken?.accessToken) throw new Error("Нет токена Spotify");
     const res = await fetch(`https://api.spotify.com/v1${path}`, { headers: { Authorization: `Bearer ${spotifyToken.accessToken}` } });
@@ -601,9 +625,9 @@ function App() {
     setTimeout(() => {
       if (!audioRef.current) return;
       ensureAudioGraph();
-      audioRef.current.play().catch(() => {});
+      audioRef.current.load();
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
       if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
-      setIsPlaying(true);
     }, 0);
   };
 
@@ -615,9 +639,8 @@ function App() {
       setIsPlaying(false);
       return;
     }
-    audioRef.current.play().catch(() => {});
+    audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
-    setIsPlaying(true);
   };
 
   const onStop = () => {
@@ -637,6 +660,13 @@ function App() {
   const updateEqCustomGain = (idx, value) => {
     setEqPreset("custom");
     setEqCustomGains((prev) => prev.map((x, i) => (i === idx ? value : x)));
+  };
+
+  const resetEqSettings = () => {
+    setEqPreset("studio");
+    setEqCustomGains([...EQ_PRESET_GAINS]);
+    setEqLevelDb(0);
+    setEqEnabled(true);
   };
 
   if (!currentUser) {
@@ -789,6 +819,11 @@ function App() {
 
             {profileError && <p className="spotify-error" style={{ marginTop: 12 }}>{profileError}</p>}
             {profileMessage && <p className="ok-msg" style={{ marginTop: 12 }}>{profileMessage}</p>}
+
+            <div className="card" style={{ marginTop: 12 }}>
+              <h3 className="sub-title" style={{ margin: 0 }}>Посты</h3>
+              <p className="muted">Скоро здесь появятся публикации, комментарии и реакции.</p>
+            </div>
 
             {profileUser.id === currentUser.id && (
               <>
@@ -989,10 +1024,15 @@ function App() {
             </div>
           </div>
 
-          <div className="player-menu-wrap">
-            <button className="icon-btn dots-btn" onClick={() => setPlayerMenuOpen((v) => !v)} title="Меню плеера">...</button>
+          <div className="player-menu-wrap" ref={playerMenuRef}>
+            <button className="icon-btn dots-btn" onClick={() => setPlayerMenuOpen((v) => !v)} title="Настрой себе свой звук">...</button>
             {playerMenuOpen && (
               <div className="player-menu">
+                <div className="player-menu-header">
+                  <div className="menu-title">Настрой себе свой звук</div>
+                  <button className="icon-btn close-btn" onClick={() => setPlayerMenuOpen(false)} title="Закрыть">✕</button>
+                </div>
+
                 <div className="menu-block">
                   <div className="menu-title">Добавить в плейлист</div>
                   <select className="small-btn" value={selectedPlaylistId} onChange={(e) => setSelectedPlaylistId(e.target.value)}>
@@ -1025,6 +1065,26 @@ function App() {
                       </label>
                     </div>
 
+                    <div className="eq-labels">
+                      <span>Уровень</span>
+                      <span>Эквалайзер</span>
+                    </div>
+
+                    <div className="eq-level-row">
+                      <label className="eq-level-band">
+                        <input
+                          type="range"
+                          min="-12"
+                          max="12"
+                          step="1"
+                          value={eqLevelDb}
+                          onChange={(e) => setEqLevelDb(Number(e.target.value))}
+                          disabled={!eqEnabled}
+                        />
+                        <span>уровень</span>
+                      </label>
+                    </div>
+
                     <div className="eq-grid">
                       {EQ_FREQUENCIES.map((freq, idx) => (
                         <label key={freq} className="eq-band">
@@ -1042,10 +1102,13 @@ function App() {
                       ))}
                     </div>
 
-                    <select className="eq-preset-select" value={eqPreset} onChange={(e) => setEqPreset(e.target.value)}>
-                      <option value="studio">Ночной баланс</option>
-                      <option value="custom">Своя настройка</option>
-                    </select>
+                    <div className="eq-actions-row">
+                      <select className="eq-preset-select" value={eqPreset} onChange={(e) => setEqPreset(e.target.value)}>
+                        <option value="studio">Ночной баланс</option>
+                        <option value="custom">Своя настройка</option>
+                      </select>
+                      <button className="small-btn" onClick={resetEqSettings}>По умолчанию</button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1072,6 +1135,19 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
