@@ -3,6 +3,7 @@ const { useEffect, useMemo, useRef, useState } = React;
 
 const AUTH_USERS_KEY = "chance_music_users_v3";
 const AUTH_SESSION_KEY = "chance_music_session_v3";
+const STORAGE_KEY = "chance_music_data_v2";
 const NICK_COOLDOWN = 12 * 60 * 60 * 1000;
 
 const SPOTIFY_SETTINGS_KEY = "chance_music_spotify_settings_v1";
@@ -1071,6 +1072,8 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
 
 
 
