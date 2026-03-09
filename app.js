@@ -364,7 +364,6 @@ function App() {
       f.gain.setTargetAtTime(gain, audioCtxRef.current.currentTime, 0.05);
     });
   }, [eqPreset, eqCustomGains, eqEnabled]);
-
   const spotifyApi = async (path) => {
     if (!spotifyToken?.accessToken) throw new Error("Нет токена Spotify");
     const res = await fetch(`https://api.spotify.com/v1${path}`, { headers: { Authorization: `Bearer ${spotifyToken.accessToken}` } });
@@ -373,9 +372,8 @@ function App() {
     let json = null;
     try { json = raw ? JSON.parse(raw) : {}; } catch { json = null; }
     if (!res.ok) {
-      const msg = json?.error?.message || raw;
-      if (msg && /premium/i.test(msg)) throw new Error("Spotify API ограничен. Нужен Premium для части функций.");
-      throw new Error(msg || "Ошибка Spotify API");
+      const msg = json?.error?.message || raw || "Ошибка Spotify API";
+      throw new Error(`[${res.status}] ${msg}`);
     }
     if (!json) throw new Error("Spotify вернул неожиданный формат ответа.");
     return json;
@@ -386,8 +384,12 @@ function App() {
     setSpotifyLoading(true);
     setSpotifyError("");
     try {
-      const [me, pls] = await Promise.all([spotifyApi("/me"), spotifyApi("/me/playlists?limit=20")]);
+      const me = await spotifyApi("/me");
       setSpotifyUser(me);
+      if (String(me?.product || "").toLowerCase() !== "premium") {
+        setSpotifyError(`Spotify account product: ${me?.product || "unknown"}. Проверь, что вход выполнен в Premium-аккаунт.`);
+      }
+      const pls = await spotifyApi("/me/playlists?limit=20");
       setSpotifyPlaylists(pls.items || []);
       if ((pls.items || []).length) setSpotifyActivePlaylistId((v) => v || pls.items[0].id);
     } catch (err) {
@@ -396,7 +398,6 @@ function App() {
       setSpotifyLoading(false);
     }
   };
-
   useEffect(() => { loadSpotifyHome(); }, [spotifyToken?.accessToken]);
 
   useEffect(() => {
@@ -428,6 +429,7 @@ function App() {
     }
     const verifier = randomString(96);
     const state = randomString(24);
+
     const challenge = await createCodeChallenge(verifier);
     localStorage.setItem(SPOTIFY_VERIFIER_KEY, verifier);
     localStorage.setItem(SPOTIFY_STATE_KEY, state);
@@ -848,7 +850,7 @@ function App() {
             <div className="card">
               <div className="row"><input className="field" placeholder="Spotify Client ID" value={spotifyClientId} onChange={(e) => setSpotifyClientId(e.target.value)} /><input className="field" placeholder="Redirect URI" value={spotifyRedirectUri} onChange={(e) => setSpotifyRedirectUri(e.target.value)} /></div>
               <div className="row">{!spotifyToken && <button className="small-btn" onClick={startSpotifyLogin}>Войти через Spotify</button>}{spotifyToken && <button className="small-btn" onClick={loadSpotifyHome}>Обновить Spotify</button>}{spotifyToken && <button className="small-btn" onClick={spotifyLogout}>Выйти из Spotify</button>}</div>
-              {spotifyUser && <p className="muted">Вход выполнен: {spotifyUser.display_name || spotifyUser.id}</p>}
+              {spotifyUser && <p className="muted">Вход: {spotifyUser.display_name || spotifyUser.id} · product: {spotifyUser.product || "unknown"} · id: {spotifyUser.id}</p>}
               {spotifyError && <p className="spotify-error">{spotifyError}</p>}
               {spotifyLoading && <p className="muted">Загрузка Spotify...</p>}
             </div>
@@ -870,6 +872,9 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
 
 
 
