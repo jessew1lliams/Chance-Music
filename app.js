@@ -545,26 +545,46 @@ function App() {
     const password = authForm.password;
     if (authMode === "register") {
       if (!username || !handle || !email || !password) return setAuthError("Заполни все поля.");
-      if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) return setAuthError("Такой ник уже занят.");
-      if (users.some((u) => normalizeHandle(u.handle) === handle)) return setAuthError("Такой @id уже занят.");
-      if (users.some((u) => u.email === email)) return setAuthError("Пользователь с таким email уже существует.");
+      const isDevPlaceholder = (u) => (u.id || "").startsWith("dev_") && !u.email && !u.password;
+      const existingByUsername = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
+      const existingByHandle = users.find((u) => normalizeHandle(u.handle) === handle);
+      const existingByEmail = users.find((u) => u.email === email);
+      if (existingByUsername && !isDevPlaceholder(existingByUsername)) return setAuthError("Такой ник уже занят.");
+      if (existingByHandle && !isDevPlaceholder(existingByHandle)) return setAuthError("Такой @id уже занят.");
+      if (existingByEmail) return setAuthError("Пользователь с таким email уже существует.");
+      const claimDevUser =
+        (existingByUsername && isDevPlaceholder(existingByUsername) ? existingByUsername : null) ||
+        (existingByHandle && isDevPlaceholder(existingByHandle) ? existingByHandle : null);
       let role = "user";
       if (username.toLowerCase() === "horonsky") role = "admin";
-      const user = {
-        id: `u_${Date.now()}`,
-        username,
-        handle,
-        email,
-        password,
-        role,
-        avatar: "https://placehold.co/160x160/000/fff?text=Avatar",
-        banner: "https://placehold.co/1280x500/000/fff?text=Banner",
-        friends: [],
-        nicknameChangedAt: 0,
-        nickStyle: { color: "#ffffff", glow: false }
-      };
-      setUsers((prev) => [...prev, user]);
-      setSession({ userId: user.id });
+      if (claimDevUser) {
+        const claimed = {
+          ...claimDevUser,
+          username,
+          handle,
+          email,
+          password,
+          role: isJesseAccount({ username, handle }) ? "admin" : (claimDevUser.role || role)
+        };
+        setUsers((prev) => prev.map((u) => (u.id === claimDevUser.id ? claimed : u)));
+        setSession({ userId: claimed.id });
+      } else {
+        const user = {
+          id: `u_${Date.now()}`,
+          username,
+          handle,
+          email,
+          password,
+          role,
+          avatar: "https://placehold.co/160x160/000/fff?text=Avatar",
+          banner: "https://placehold.co/1280x500/000/fff?text=Banner",
+          friends: [],
+          nicknameChangedAt: 0,
+          nickStyle: { color: "#ffffff", glow: false }
+        };
+        setUsers((prev) => [...prev, user]);
+        setSession({ userId: user.id });
+      }
       setAuthForm({ username: "", handle: "", email: "", password: "" });
       return;
     }
