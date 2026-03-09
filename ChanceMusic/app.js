@@ -699,7 +699,7 @@ function App() {
         <nav className="menu">
           <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}>Поиск</button>
           <button className={`menu-btn ${activeView === "home" ? "active" : ""}`} onClick={() => { setActiveView("home"); setViewedProfileId(null); }}>Главная</button>
-          <button className={`menu-btn ${activeView === "collection" ? "active" : ""}`} onClick={() => setActiveView("collection")}>Spotify</button>
+          <button className={`menu-btn ${activeView === "collection" ? "active" : ""}`} onClick={() => setActiveView("collection")}>Подключения</button>
           <button className={`menu-btn ${activeView === "developers" ? "active" : ""}`} onClick={() => setActiveView("developers")}>Разработчики</button>
         </nav>
 
@@ -846,16 +846,77 @@ function App() {
 
         {activeView === "collection" && (
           <section>
-            <h2 className="section-title">Spotify</h2>
+            <h2 className="section-title spotify-title"><span className="spotify-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" role="img"><circle cx="12" cy="12" r="11" fill="#1db954"/><path d="M6.8 9.2c3.6-1.1 7.8-.8 10.8.9" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" fill="none"/><path d="M7.4 12.1c3-0.9 6.4-.6 8.9.8" stroke="#0a0a0a" stroke-width="1.6" stroke-linecap="round" fill="none"/><path d="M8 15c2.3-.6 4.8-.4 6.8.6" stroke="#0a0a0a" stroke-width="1.4" stroke-linecap="round" fill="none"/></svg></span><span>Spotify</span></h2>
+
             <div className="card">
-              <div className="row"><input className="field" placeholder="Spotify Client ID" value={spotifyClientId} onChange={(e) => setSpotifyClientId(e.target.value)} /><input className="field" placeholder="Redirect URI" value={spotifyRedirectUri} onChange={(e) => setSpotifyRedirectUri(e.target.value)} /></div>
-              <div className="row">{!spotifyToken && <button className="small-btn" onClick={startSpotifyLogin}>Войти через Spotify</button>}{spotifyToken && <button className="small-btn" onClick={loadSpotifyHome}>Обновить Spotify</button>}{spotifyToken && <button className="small-btn" onClick={spotifyLogout}>Выйти из Spotify</button>}</div>
-              {spotifyUser && <p className="muted">Вход: {spotifyUser.display_name || spotifyUser.id} · product: {spotifyUser.product || "unknown"} · id: {spotifyUser.id}</p>}
+              <div className="row">
+                <input className="field" placeholder="Client ID Spotify" value={spotifyClientId} onChange={(e) => setSpotifyClientId(e.target.value)} />
+                <input className="field" placeholder="Redirect URI" value={spotifyRedirectUri} onChange={(e) => setSpotifyRedirectUri(e.target.value)} />
+              </div>
+
+              <div className="row">
+                {!spotifyToken && <button className="small-btn" onClick={startSpotifyLogin}>Войти через Spotify</button>}
+                {spotifyToken && <button className="small-btn" onClick={loadSpotifyHome}>Обновить Spotify</button>}
+                {spotifyToken && <button className="small-btn" onClick={spotifyLogout}>Выйти из Spotify</button>}
+              </div>
+
+              {spotifyUser && (
+                <p className="muted">
+                  Вход выполнен: {spotifyUser.display_name || spotifyUser.id} · Тариф: {spotifyUser.product || "неизвестно"} · Аккаунт: {spotifyUser.id}
+                </p>
+              )}
+
               {spotifyError && <p className="spotify-error">{spotifyError}</p>}
-              {spotifyLoading && <p className="muted">Загрузка Spotify...</p>}
+              {spotifyLoading && <p className="muted">Загрузка данных Spotify...</p>}
             </div>
-            {spotifyPlaylists.length > 0 && <div className="playlist-list" style={{ marginTop: 12 }}>{spotifyPlaylists.map((p) => <div key={p.id} className={`card ${spotifyActivePlaylistId === p.id ? "playlist-active" : ""}`}><img className="cover" src={p.images?.[0]?.url || "https://placehold.co/600x600/000/fff?text=Spotify"} alt={p.name} /><h3>{p.name}</h3><div className="row"><button className="small-btn" onClick={() => setSpotifyActivePlaylistId(p.id)}>Открыть</button><a className="small-btn" href={p.external_urls?.spotify} target="_blank" rel="noreferrer">В Spotify</a></div></div>)}</div>}
-            {spotifyActivePlaylistId && <div className="card" style={{ marginTop: 12 }}><h3>Треки Spotify плейлиста</h3>{spotifyTracks.length === 0 ? <p className="muted">Нет треков или доступ ограничен.</p> : spotifyTracks.map((t) => <div key={t.id || t.uri} className="playlist-track-row"><div><div>{t.name}</div><div className="muted">{(t.artists || []).map((a) => a.name).join(", ")}</div></div><div className="row">{t.preview_url && <audio controls src={t.preview_url} preload="none" />}<a className="small-btn" href={t.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть</a></div></div>)}</div>}
+
+            <div className="card" style={{ marginTop: 12 }}>
+              <h3>Правила подключения Spotify</h3>
+              <ul className="spotify-rules">
+                <li>Используй один и тот же аккаунт в приложении и в Spotify for Developers.</li>
+                <li>Проверь, что у аккаунта активен Premium и подтвержден способ оплаты.</li>
+                <li>Если видишь 403 по стране, это региональное ограничение аккаунта Spotify, а не ошибка сайта.</li>
+                <li>VPN обычно не помогает, если страна зафиксирована в профиле Spotify.</li>
+                <li>Client ID и Redirect URI должны полностью совпадать с настройками Spotify Dashboard.</li>
+              </ul>
+            </div>
+
+            {spotifyPlaylists.length > 0 && (
+              <div className="playlist-list" style={{ marginTop: 12 }}>
+                {spotifyPlaylists.map((p) => (
+                  <div key={p.id} className={`card ${spotifyActivePlaylistId === p.id ? "playlist-active" : ""}`}>
+                    <img className="cover" src={p.images?.[0]?.url || "https://placehold.co/600x600/000/fff?text=Spotify"} alt={p.name} />
+                    <h3>{p.name}</h3>
+                    <div className="row">
+                      <button className="small-btn" onClick={() => setSpotifyActivePlaylistId(p.id)}>Открыть</button>
+                      <a className="small-btn" href={p.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть в Spotify</a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {spotifyActivePlaylistId && (
+              <div className="card" style={{ marginTop: 12 }}>
+                <h3>Треки выбранного плейлиста</h3>
+                {spotifyTracks.length === 0 ? (
+                  <p className="muted">Треки недоступны или доступ ограничен аккаунтом.</p>
+                ) : (
+                  spotifyTracks.map((t) => (
+                    <div key={t.id || t.uri} className="playlist-track-row">
+                      <div>
+                        <div>{t.name}</div>
+                        <div className="muted">{(t.artists || []).map((a) => a.name).join(", ")}</div>
+                      </div>
+                      <div className="row">
+                        {t.preview_url && <audio controls src={t.preview_url} preload="none" />}
+                        <a className="small-btn" href={t.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть</a>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </section>
         )}
       </main>
@@ -872,6 +933,8 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
 
 
 

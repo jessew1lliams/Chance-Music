@@ -137,3 +137,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 
 
+
+.spotify-rules { margin: 8px 0 0 18px; padding: 0; display: grid; gap: 6px; }
+.spotify-rules li { color: var(--muted); line-height: 1.4; }
+
+.spotify-title { display: inline-flex; align-items: center; gap: 8px; }
+.spotify-icon { display: inline-flex; width: 20px; height: 20px; }
