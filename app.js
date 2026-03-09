@@ -65,9 +65,9 @@ function normalizeUsers(users) {
   return list.map((u, i) => ({
     id: u.id || `u_${Date.now()}_${i}`,
     username: (u.username || u.name || "user").trim(),
-    email: (u.email || "").toLowerCase(),
+    handle: normalizeHandle(u.handle || u.tag || u.username || u.name || "user"),
     password: u.password || "",
-    role: u.role || (i === 0 ? "admin" : "user"),
+    role: isJesseAccount(u) ? "admin" : (u.role || (i === 0 ? "admin" : "user")),
     avatar: u.avatar || "https://placehold.co/160x160/000/fff?text=Avatar",
     banner: u.banner || "https://placehold.co/1280x500/000/fff?text=Banner",
     friends: Array.isArray(u.friends) ? u.friends : [],
@@ -106,6 +106,19 @@ function detectAudioQuality(track) {
   return m ? m[1].toUpperCase() : "UNKNOWN";
 }
 
+
+function normalizeHandle(raw) {
+  const cleaned = String(raw || "").trim().replace(/^@+/, "").toLowerCase().replace(/[^a-z0-9_\.]/g, "");
+  return cleaned;
+}
+
+function isJesseAccount(user) {
+  const uname = String(user?.username || "").toLowerCase();
+  const handle = normalizeHandle(user?.handle);
+  return uname === "jessew1lliams" || handle === "jessew1lliams";
+}
+
+
 function Nick({ user }) {
   return (
     <span
@@ -137,7 +150,7 @@ function App() {
 
   const [authMode, setAuthMode] = useState("login");
   const [loginMethod, setLoginMethod] = useState("username");
-  const [authForm, setAuthForm] = useState({ username: "", email: "", password: "" });
+  const [authForm, setAuthForm] = useState({ username: "", handle: "", email: "", password: "" });
   const [authError, setAuthError] = useState("");
 
   const [profileError, setProfileError] = useState("");
@@ -173,6 +186,7 @@ function App() {
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
+  const authDevelopersRef = useRef(null);
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
   const profileUser = useMemo(() => {
@@ -180,6 +194,8 @@ function App() {
     if (!viewedProfileId) return currentUser;
     return users.find((u) => u.id === viewedProfileId) || currentUser;
   }, [users, currentUser, viewedProfileId]);
+
+  const isJesseOwner = Boolean(currentUser && isJesseAccount(currentUser));
 
   const tracks = data?.tracks || [];
   const playlists = data?.playlists || [];
@@ -189,6 +205,20 @@ function App() {
   useEffect(() => {
     localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
   }, [users]);
+
+  useEffect(() => {
+    setUsers((prev) => {
+      let changed = false;
+      const next = prev.map((u) => {
+        if (!isJesseAccount(u)) return u;
+        if (u.role === "admin") return u;
+        changed = true;
+        return { ...u, role: "admin" };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
 
   useEffect(() => {
     if (!session) localStorage.removeItem(AUTH_SESSION_KEY);
@@ -429,17 +459,19 @@ function App() {
     setAuthError("");
     const username = authForm.username.trim();
     const email = authForm.email.trim().toLowerCase();
+    const handle = normalizeHandle(authForm.handle);
     const password = authForm.password;
-
     if (authMode === "register") {
-      if (!username || !email || !password) return setAuthError("Заполни все поля.");
+      if (!username || !handle || !email || !password) return setAuthError("Заполни все поля.");
       if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) return setAuthError("Такой ник уже занят.");
+      if (users.some((u) => normalizeHandle(u.handle) === handle)) return setAuthError("Такой @id уже занят.");
       if (users.some((u) => u.email === email)) return setAuthError("Пользователь с таким email уже существует.");
       let role = users.length === 0 ? "admin" : "user";
       if (username.toLowerCase() === "horonsky") role = "admin";
       const user = {
         id: `u_${Date.now()}`,
         username,
+        handle,
         email,
         password,
         role,
@@ -451,7 +483,7 @@ function App() {
       };
       setUsers((prev) => [...prev, user]);
       setSession({ userId: user.id });
-      setAuthForm({ username: "", email: "", password: "" });
+      setAuthForm({ username: "", handle: "", email: "", password: "" });
       return;
     }
 
@@ -466,7 +498,7 @@ function App() {
     }
     if (!found) return setAuthError("Неверные данные для входа.");
     setSession({ userId: found.id });
-    setAuthForm({ username: "", email: "", password: "" });
+    setAuthForm({ username: "", handle: "", email: "", password: "" });
   };
 
   const onLogout = () => {
@@ -483,8 +515,12 @@ function App() {
   };
 
   const setRole = (id, role) => {
-    if (currentUser?.role !== "admin") return;
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role } : u)));
+    if (!isJesseOwner) return;
+    setUsers((prev) => prev.map((u) => {
+      if (u.id !== id) return u;
+      if (isJesseAccount(u)) return { ...u, role: "admin" };
+      return { ...u, role };
+    }));
   };
 
   const addFriend = (targetId) => {
@@ -537,7 +573,7 @@ function App() {
       if (typeof value === "string") {
         updateCurrentUser({ [kind]: value });
         setProfileError("");
-        setProfileMessage(kind === "avatar" ? "Аватар обновлен." : "Обложка обновлена.");
+        setProfileMessage(kind === "avatar" ? "Аватар обновлен." : "Баннер обновлен.");
       }
     };
     reader.readAsDataURL(file);
@@ -620,6 +656,9 @@ function App() {
             {(authMode === "register" || (authMode === "login" && loginMethod === "username")) && (
               <input className="field" placeholder={authMode === "register" ? "Ник" : "Логин"} value={authForm.username} onChange={(e) => setAuthForm((p) => ({ ...p, username: e.target.value }))} />
             )}
+            {authMode === "register" && (
+              <input className="field" placeholder="@id (например @jessew1lliams)" value={authForm.handle} onChange={(e) => setAuthForm((p) => ({ ...p, handle: e.target.value }))} />
+            )}
             {(authMode === "register" || (authMode === "login" && loginMethod === "email")) && (
               <input className="field" type="email" placeholder="Email" value={authForm.email} onChange={(e) => setAuthForm((p) => ({ ...p, email: e.target.value }))} />
             )}
@@ -627,6 +666,11 @@ function App() {
             {authError && <p className="spotify-error">{authError}</p>}
             <button className="small-btn auth-submit" type="submit">{authMode === "login" ? "Войти" : "Создать аккаунт"}</button>
           </form>
+          <button className="auth-dev-btn" type="button" onClick={() => authDevelopersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Разработчики</button>
+          <div ref={authDevelopersRef} className="auth-developers">
+            <div>@jessew1lliams</div>
+            <div>@HORONSKY</div>
+          </div>
         </div>
       </div>
     );
@@ -681,7 +725,7 @@ function App() {
                     <div className="card" key={u.id}>
                       <img className="avatar" src={u.avatar} alt={u.username} />
                       <button className="link-btn" onClick={() => openProfile(u.id)}><Nick user={u} /></button>
-                      <p className="muted">{u.role}</p>
+                      <p className="muted">@{u.handle || normalizeHandle(u.username)} · {u.role}</p>
                       {u.id !== currentUser.id && <button className="small-btn" onClick={() => addFriend(u.id)}>{currentUser.friends.includes(u.id) ? "Уже в друзьях" : "Добавить в друзья"}</button>}
                     </div>
                   ))}
@@ -706,6 +750,7 @@ function App() {
               <div className="profile-banner-center">
                 <img className="profile-banner-avatar" src={profileUser.avatar} alt="avatar" />
                 <div className="profile-banner-nick"><Nick user={profileUser} /></div>
+                <div className="profile-banner-handle">@{profileUser.handle || normalizeHandle(profileUser.username)}</div>
                 <div className="profile-banner-role">{profileUser.role}</div>
               </div>
               {profileUser.id === currentUser.id && (
@@ -732,7 +777,7 @@ function App() {
                 <button className="small-btn" onClick={changeNickname}>Обновить ник</button>
                 <label className="muted">Аватар (PNG/JPEG{currentUser.role === "admin" || currentUser.role === "moderator" ? "/GIF" : ""})</label>
                 <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("avatar", e.target.files?.[0])} />
-                <label className="muted">Обложка профиля (точно 1280x500)</label>
+                <label className="muted">Баннер (точно 1280x500)</label>
                 <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("banner", e.target.files?.[0])} />
               </div>
             )}
@@ -753,18 +798,22 @@ function App() {
                   ))}
                 </div>
 
-                {currentUser.role === "admin" && (
+                {isJesseOwner && (
                   <>
                     <h3 className="sub-title" style={{ marginTop: 18 }}>Роли пользователей</h3>
                     <div className="user-grid">
                       {users.map((u) => (
                         <div className="card" key={u.id}>
                           <button className="link-btn" onClick={() => openProfile(u.id)}><Nick user={u} /></button>
+                          <p className="muted">@{u.handle || normalizeHandle(u.username)}</p>
                           <select className="field" value={u.role} onChange={(e) => setRole(u.id, e.target.value)}>
                             <option value="user">user</option>
                             <option value="moderator">moderator</option>
                             <option value="admin">admin</option>
                           </select>
+                          <label className="muted">Цвет ника</label>
+                          <input className="field" type="color" value={u.nickStyle?.color || "#ffffff"} onChange={(e) => setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, nickStyle: { ...(x.nickStyle || {}), color: e.target.value, glow: Boolean(x.nickStyle?.glow) } } : x))} />
+                          <label className="muted row"><input type="checkbox" checked={Boolean(u.nickStyle?.glow)} onChange={(e) => setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, nickStyle: { ...(x.nickStyle || {}), color: x.nickStyle?.color || "#ffffff", glow: e.target.checked } } : x))} />Свечение ника</label>
                         </div>
                       ))}
                     </div>
@@ -821,3 +870,18 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
