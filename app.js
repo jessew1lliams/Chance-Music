@@ -221,9 +221,24 @@ function App() {
       throw new Error("Сессия Spotify истекла. Войдите снова.");
     }
 
-    const json = await res.json();
+    const raw = await res.text();
+    let json = null;
+    try {
+      json = raw ? JSON.parse(raw) : {};
+    } catch {
+      json = null;
+    }
+
     if (!res.ok) {
-      throw new Error(json.error?.message || "Ошибка Spotify API");
+      const apiMessage = json?.error?.message || raw;
+      if (apiMessage && /premium/i.test(apiMessage)) {
+        throw new Error("Spotify API ограничен для текущего аккаунта. Нужен Premium для части функций.");
+      }
+      throw new Error(apiMessage || "Ошибка Spotify API");
+    }
+
+    if (!json) {
+      throw new Error("Spotify вернул неожиданный формат ответа.");
     }
     return json;
   };
