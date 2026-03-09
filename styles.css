@@ -142,9 +142,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .player-progress-wrap {
   position: absolute;
-  left: 184px;
-  right: 24px;
-  top: 8px;
+  left: 196px;
+  right: 18px;
+  top: -6px;
   opacity: 0.22;
   transition: opacity 0.2s ease;
 }
@@ -331,5 +331,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .main { padding-bottom: 380px; }
   .eq-grid { grid-template-columns: repeat(5, minmax(26px, 1fr)); }
 }
+
 
 
