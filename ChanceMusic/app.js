@@ -32,6 +32,34 @@ const SAMPLE_TRACK = {
 const EQ_FREQUENCIES = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
 const EQ_PRESET_GAINS = [0, 0, -6, -6, -6, -6, -6, -6, -5, -5];
 const SITE_NAME = "Шанс | Music";
+const DEV_USERS = [
+  {
+    id: "dev_jessew1lliams",
+    username: "jessew1lliams",
+    handle: "jessew1lliams",
+    role: "admin",
+    email: "",
+    password: "",
+    avatar: "https://placehold.co/160x160/000/fff?text=Avatar",
+    banner: "https://placehold.co/1280x500/000/fff?text=Banner",
+    friends: [],
+    nicknameChangedAt: 0,
+    nickStyle: { color: "#ffffff", glow: true }
+  },
+  {
+    id: "dev_horonsky",
+    username: "HORONSKY",
+    handle: "horonsky",
+    role: "admin",
+    email: "",
+    password: "",
+    avatar: "https://placehold.co/160x160/000/fff?text=Avatar",
+    banner: "https://placehold.co/1280x500/000/fff?text=Banner",
+    friends: [],
+    nicknameChangedAt: 0,
+    nickStyle: { color: "#ffffff", glow: false }
+  }
+];
 
 function formatTime(v) {
   if (!Number.isFinite(v)) return "0:00";
@@ -66,8 +94,9 @@ function normalizeUsers(users) {
     id: u.id || `u_${Date.now()}_${i}`,
     username: (u.username || u.name || "user").trim(),
     handle: normalizeHandle(u.handle || u.tag || u.username || u.name || "user"),
+    email: (u.email || "").trim().toLowerCase(),
     password: u.password || "",
-    role: isJesseAccount(u) ? "admin" : (u.role || (i === 0 ? "admin" : "user")),
+    role: isJesseAccount(u) ? "admin" : (u.role || "user"),
     avatar: u.avatar || "https://placehold.co/160x160/000/fff?text=Avatar",
     banner: u.banner || "https://placehold.co/1280x500/000/fff?text=Banner",
     friends: Array.isArray(u.friends) ? u.friends : [],
@@ -79,11 +108,20 @@ function normalizeUsers(users) {
   }));
 }
 
+function withDevUsers(users) {
+  const normalized = normalizeUsers(users);
+  const handles = new Set(normalized.map((u) => normalizeHandle(u.handle || u.username)));
+  const merged = [...normalized];
+  DEV_USERS.forEach((dev) => {
+    if (!handles.has(normalizeHandle(dev.handle))) merged.push(dev);
+  });
+  return normalizeUsers(merged);
+}
 function loadUsers() {
   try {
-    return normalizeUsers(JSON.parse(localStorage.getItem(AUTH_USERS_KEY) || "[]"));
+    return withDevUsers(JSON.parse(localStorage.getItem(AUTH_USERS_KEY) || "[]"));
   } catch {
-    return [];
+    return withDevUsers([]);
   }
 }
 
@@ -206,6 +244,7 @@ function App() {
   const playlists = data?.playlists || [];
   const trackIndex = tracks.findIndex((t) => t.id === currentTrackId);
   const currentTrack = tracks[trackIndex] || tracks[0] || null;
+  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
 
   useEffect(() => {
     localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
@@ -509,7 +548,7 @@ function App() {
       if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) return setAuthError("Такой ник уже занят.");
       if (users.some((u) => normalizeHandle(u.handle) === handle)) return setAuthError("Такой @id уже занят.");
       if (users.some((u) => u.email === email)) return setAuthError("Пользователь с таким email уже существует.");
-      let role = users.length === 0 ? "admin" : "user";
+      let role = "user";
       if (username.toLowerCase() === "horonsky") role = "admin";
       const user = {
         id: `u_${Date.now()}`,
@@ -900,7 +939,7 @@ function App() {
 
         {activeView === "collection" && (
           <section>
-            <h2 className="section-title spotify-title"><span className="spotify-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" role="img"><circle cx="12" cy="12" r="11" fill="#1db954"/><path d="M6.8 9.2c3.6-1.1 7.8-.8 10.8.9" stroke="#0a0a0a" strokeWidth="1.8" strokeLinecap="round" fill="none"/><path d="M7.4 12.1c3-0.9 6.4-.6 8.9.8" stroke="#0a0a0a" strokeWidth="1.6" strokeLinecap="round" fill="none"/><path d="M8 15c2.3-.6 4.8-.4 6.8.6" stroke="#0a0a0a" strokeWidth="1.4" strokeLinecap="round" fill="none"/></svg></span><span>Spotify</span></h2>
+            <h2 className="section-title spotify-title"><span className="spotify-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" role="img"><circle cx="12" cy="12" r="11" fill="#1db954"/><path d="M6.8 9.2c3.6-1.1 7.8-.8 10.8.9" stroke="#0a0a0a" strokeWidth="1.8" strokeLinecap="round" fill="none"/><path d="M7.4 12.1c3-0.9 6.4-.6 8.9.8" stroke="#0a0a0a" strokeWidth="1.6" strokeLinecap="round" fill="none"/><path d="M8 15c2.3-.6 4.8-.4 6.8.6" stroke="#0a0a0a" strokeWidth="1.4" strokeLinecap="round" fill="none"/></svg></span><span>Spotify</span></h2>
 
             <div className="card">
               <div className="row">
@@ -984,6 +1023,7 @@ function App() {
             max={duration || 0}
             step="0.1"
             value={progress}
+            style={{ background: `linear-gradient(to right, #a8a8a8 0%, #a8a8a8 ${progressPercent}%, #2d2d2d ${progressPercent}%, #2d2d2d 100%)` }}
             onChange={(e) => {
               const n = Number(e.target.value);
               setProgress(n);
@@ -1000,8 +1040,8 @@ function App() {
           {currentTrack ? (
             <>
               <img className="player-cover" src={currentTrack.cover} alt={currentTrack.title} />
-              <div>
-                <div>{currentTrack.title}</div>
+              <div className="player-meta">
+                <div className="player-title">{currentTrack.title}</div>
                 <div className="muted">{currentTrack.artist}</div>
               </div>
             </>
@@ -1152,6 +1192,13 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
+
+
+
+
 
 
 

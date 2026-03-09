@@ -33,7 +33,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   flex-direction: column;
   gap: 14px;
 }
-.logo { width: 58px; height: 58px; object-fit: contain; border: 0; background: transparent; }
+.logo { width: 74px; height: 74px; object-fit: contain; border: 0; background: transparent; }
 .logo-link { border: 0; background: transparent; padding: 0; width: fit-content; cursor: pointer; }
 .menu { display: flex; flex-direction: column; gap: 8px; }
 .menu-btn {
@@ -142,14 +142,14 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .player-progress-wrap {
   position: absolute;
-  left: 16px;
-  right: 16px;
-  top: -8px;
-  opacity: 0.32;
+  left: 184px;
+  right: 24px;
+  top: 8px;
+  opacity: 0.22;
   transition: opacity 0.2s ease;
 }
-.player:hover .player-progress-wrap,
-.player:focus-within .player-progress-wrap { opacity: 1; }
+.player-progress-wrap:hover,
+.player-progress-wrap:focus-within { opacity: 1; }
 .progress {
   width: 100%;
   height: 3px;
@@ -160,7 +160,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border-radius: 999px;
   cursor: pointer;
 }
-.progress::-webkit-slider-runnable-track { height: 3px; background: #2d2d2d; border-radius: 999px; }
+.progress::-webkit-slider-runnable-track { height: 3px; background: transparent; border-radius: 999px; }
 .progress::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -172,12 +172,12 @@ button, input, textarea, select { font: inherit; color: inherit; }
   opacity: 0;
   transition: opacity .15s ease, transform .15s ease, background .15s ease;
 }
-.player:hover .progress,
-.progress:hover { height: 4px; background: #fff; }
-.player:hover .progress::-webkit-slider-runnable-track,
-.progress:hover::-webkit-slider-runnable-track { height: 4px; background: #fff; }
-.player:hover .progress::-webkit-slider-thumb,
+.progress:hover { height: 4px; }
+
+.progress:hover::-webkit-slider-runnable-track { height: 4px; }
+
 .progress:hover::-webkit-slider-thumb { opacity: 1; transform: scale(1.05); background: #9a9a9a; }
+
 .progress-times {
   display: flex;
   justify-content: space-between;
@@ -187,11 +187,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
   opacity: 0;
   transition: opacity .2s ease;
 }
-.player:hover .progress-times,
-.player:focus-within .progress-times { opacity: 1; }
+.player-progress-wrap:hover .progress-times,
+.player-progress-wrap:focus-within .progress-times { opacity: 1; }
 
 .player-left, .player-center, .player-right { display: flex; align-items: center; gap: 8px; }
 .player-cover { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; }
+.player-meta { display: grid; gap: 3px; }
+.player-title { font-weight: 700; }
 .player-center { flex-direction: column; align-items: center; }
 .controls.centered-controls { display: flex; justify-content: center; gap: 14px; }
 .icon-btn { border: 0; background: transparent; color: #fff; min-width: 44px; min-height: 36px; cursor: pointer; padding: 0; }
@@ -319,7 +321,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .spotify-rules { margin: 8px 0 0 18px; padding: 0; display: grid; gap: 6px; }
 .spotify-rules li { color: var(--muted); line-height: 1.4; }
 .spotify-title { display: inline-flex; align-items: center; gap: 10px; }
-.spotify-icon { display: inline-flex; width: 28px; height: 28px; }
+.spotify-icon { display: inline-flex; width: 38px; height: 38px; }
 
 @media (max-width: 1150px) {
   .app { grid-template-columns: 1fr; }
@@ -329,3 +331,5 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .main { padding-bottom: 380px; }
   .eq-grid { grid-template-columns: repeat(5, minmax(26px, 1fr)); }
 }
+
+
