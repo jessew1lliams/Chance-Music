@@ -18,7 +18,7 @@ const SPOTIFY_SCOPES = [
 ].join(" ");
 
 const FALLBACK_DATA = {
-  site: { logo: "./logo.svg" },
+  site: { logo: "./logo.png" },
   tracks: [],
   playlists: [],
   user: { collectionTrackIds: [] }
@@ -95,6 +95,7 @@ function Nick({ user }) {
 function App() {
   const [data, setData] = useState(null);
   const [activeView, setActiveView] = useState("home");
+  const [viewedProfileId, setViewedProfileId] = useState(null);
   const [query, setQuery] = useState("");
 
   const [users, setUsers] = useState(() => loadUsers());
@@ -107,11 +108,14 @@ function App() {
   });
 
   const [authMode, setAuthMode] = useState("login");
+  const [loginMethod, setLoginMethod] = useState("username");
   const [authForm, setAuthForm] = useState({ username: "", email: "", password: "" });
   const [authError, setAuthError] = useState("");
   const [profileError, setProfileError] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
   const [newNick, setNewNick] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [editProfileMode, setEditProfileMode] = useState(false);
 
   const [currentTrackId, setCurrentTrackId] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -135,6 +139,11 @@ function App() {
   const audioRef = useRef(null);
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
+  const profileUser = useMemo(() => {
+    if (!currentUser) return null;
+    if (!viewedProfileId) return currentUser;
+    return users.find((u) => u.id === viewedProfileId) || currentUser;
+  }, [users, currentUser, viewedProfileId]);
 
   useEffect(() => {
     localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
@@ -234,7 +243,7 @@ function App() {
     fetch("./data.json")
       .then((r) => r.json())
       .then((json) => {
-        const d = { ...json, site: { ...json.site, logo: "./logo.svg" } };
+        const d = { ...json, site: { ...json.site, logo: "./logo.png" } };
         setData(d);
         setCurrentTrackId(d.tracks?.[0]?.id || null);
         setActivePlaylistId(d.playlists?.[0]?.id || "");
@@ -344,12 +353,11 @@ function App() {
     const email = authForm.email.trim().toLowerCase();
     const password = authForm.password;
 
-    if (!username || !email || !password) {
-      setAuthError("Заполни все поля.");
-      return;
-    }
-
     if (authMode === "register") {
+      if (!username || !email || !password) {
+        setAuthError("Заполни все поля.");
+        return;
+      }
       if (users.some((u) => u.username.toLowerCase() === username.toLowerCase())) {
         setAuthError("Такой ник уже занят.");
         return;
@@ -358,7 +366,8 @@ function App() {
         setAuthError("Пользователь с таким email уже существует.");
         return;
       }
-      const role = users.length === 0 ? "admin" : "user";
+      let role = users.length === 0 ? "admin" : "user";
+      if (username.toLowerCase() === "horonsky") role = "admin";
       const user = {
         id: `u_${Date.now()}`,
         username,
@@ -377,9 +386,28 @@ function App() {
       return;
     }
 
-    const found = users.find((u) => u.email === email && u.password === password);
+    if (!password) {
+      setAuthError("Введи пароль.");
+      return;
+    }
+
+    let found = null;
+    if (loginMethod === "email") {
+      if (!email) {
+        setAuthError("Введи email.");
+        return;
+      }
+      found = users.find((u) => u.email === email && u.password === password);
+    } else {
+      if (!username) {
+        setAuthError("Введи логин.");
+        return;
+      }
+      found = users.find((u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+    }
+
     if (!found) {
-      setAuthError("Неверный email или пароль.");
+      setAuthError("Неверные данные для входа.");
       return;
     }
     setSession({ userId: found.id });
@@ -390,6 +418,8 @@ function App() {
     setSession(null);
     setAuthMode("login");
     setAuthError("");
+    setViewedProfileId(null);
+    setEditProfileMode(false);
   };
 
   const updateCurrentUser = (patch) => {
@@ -409,6 +439,20 @@ function App() {
       if (u.id === targetId && !u.friends.includes(currentUser.id)) return { ...u, friends: [...u.friends, currentUser.id] };
       return u;
     }));
+    setProfileMessage("Пользователь добавлен в друзья.");
+  };
+
+  const openProfile = (id) => {
+    setViewedProfileId(id);
+    setActiveView("profile");
+    setEditProfileMode(false);
+    setProfileError("");
+    setProfileMessage("");
+  };
+
+  const openProfileByUsername = (username) => {
+    const found = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
+    if (found) openProfile(found.id);
   };
 
   const changeNickname = () => {
@@ -417,6 +461,9 @@ function App() {
     setProfileMessage("");
     const nick = newNick.trim();
     if (!nick) return setProfileError("Ник не может быть пустым.");
+    if (confirmPassword !== currentUser.password) {
+      return setProfileError("Для смены ника введи текущий пароль.");
+    }
     if (users.some((u) => u.id !== currentUser.id && u.username.toLowerCase() === nick.toLowerCase())) {
       return setProfileError("Такой ник уже занят.");
     }
@@ -426,7 +473,28 @@ function App() {
     }
     updateCurrentUser({ username: nick, nicknameChangedAt: Date.now() });
     setNewNick("");
+    setConfirmPassword("");
     setProfileMessage("Ник обновлен.");
+  };
+
+  const onImagePick = (kind, file) => {
+    if (!currentUser || !file) return;
+    const privileged = currentUser.role === "admin" || currentUser.role === "moderator";
+    const allowed = privileged ? ["image/png", "image/jpeg", "image/gif"] : ["image/png", "image/jpeg"];
+    if (!allowed.includes(file.type)) {
+      setProfileError(privileged ? "Можно загружать PNG, JPEG, GIF." : "Можно загружать только PNG или JPEG.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const value = e.target?.result;
+      if (typeof value === "string") {
+        updateCurrentUser({ [kind]: value });
+        setProfileError("");
+        setProfileMessage(kind === "avatar" ? "Аватар обновлен." : "Обложка обновлена.");
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const tracks = data?.tracks || [];
@@ -541,15 +609,28 @@ function App() {
     return (
       <div className="auth-screen">
         <div className="auth-card">
-          <img src="./logo.svg" alt="logo" className="auth-logo" />
+          <img src="./logo.png" alt="logo" className="auth-logo" />
           <h1>{SITE_NAME}</h1>
+
           <div className="auth-tabs">
             <button className={`menu-btn ${authMode === "login" ? "active" : ""}`} onClick={() => setAuthMode("login")}>Вход</button>
             <button className={`menu-btn ${authMode === "register" ? "active" : ""}`} onClick={() => setAuthMode("register")}>Регистрация</button>
           </div>
-          <form className="auth-form" onSubmit={onAuthSubmit}>
-            <input className="field" placeholder="Ник" value={authForm.username} onChange={(e) => setAuthForm((p) => ({ ...p, username: e.target.value }))} />
-            <input className="field" type="email" placeholder="Email" value={authForm.email} onChange={(e) => setAuthForm((p) => ({ ...p, email: e.target.value }))} />
+
+          {authMode === "login" && (
+            <div className="row">
+              <button className={`small-btn ${loginMethod === "username" ? "active" : ""}`} type="button" onClick={() => setLoginMethod("username")}>По логину</button>
+              <button className={`small-btn ${loginMethod === "email" ? "active" : ""}`} type="button" onClick={() => setLoginMethod("email")}>По почте</button>
+            </div>
+          )}
+
+          <form className="auth-form auth-form-lower" onSubmit={onAuthSubmit}>
+            {(authMode === "register" || (authMode === "login" && loginMethod === "username")) && (
+              <input className="field" placeholder={authMode === "register" ? "Ник" : "Логин"} value={authForm.username} onChange={(e) => setAuthForm((p) => ({ ...p, username: e.target.value }))} />
+            )}
+            {(authMode === "register" || (authMode === "login" && loginMethod === "email")) && (
+              <input className="field" type="email" placeholder="Email" value={authForm.email} onChange={(e) => setAuthForm((p) => ({ ...p, email: e.target.value }))} />
+            )}
             <input className="field" type="password" placeholder="Пароль" value={authForm.password} onChange={(e) => setAuthForm((p) => ({ ...p, password: e.target.value }))} />
             {authError && <p className="spotify-error">{authError}</p>}
             <button className="small-btn auth-submit" type="submit">{authMode === "login" ? "Войти" : "Создать аккаунт"}</button>
@@ -579,23 +660,21 @@ function App() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand">
-          <img className="logo" src={data.site.logo || "./logo.svg"} alt="Лого" />
-          <div className="site-name">{SITE_NAME}</div>
-        </div>
+        <button className="logo-link" onClick={() => { setActiveView("home"); setViewedProfileId(null); }} title="На главную">
+          <img className="logo" src="./logo.png" alt="Лого" />
+        </button>
 
         <nav className="menu">
           <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}>Поиск</button>
-          <button className={`menu-btn ${activeView === "home" ? "active" : ""}`} onClick={() => setActiveView("home")}>Главная</button>
+          <button className={`menu-btn ${activeView === "home" ? "active" : ""}`} onClick={() => { setActiveView("home"); setViewedProfileId(null); }}>Главная</button>
           <button className={`menu-btn ${activeView === "collection" ? "active" : ""}`} onClick={() => setActiveView("collection")}>Коллекция</button>
-          <button className={`menu-btn ${activeView === "profile" ? "active" : ""}`} onClick={() => setActiveView("profile")}>Личный кабинет</button>
           <button className={`menu-btn ${activeView === "developers" ? "active" : ""}`} onClick={() => setActiveView("developers")}>Разработчики</button>
+          <button className={`menu-btn profile-nav ${activeView === "profile" ? "active" : ""}`} onClick={() => { setActiveView("profile"); setViewedProfileId(null); setEditProfileMode(false); }}>Профиль</button>
         </nav>
 
         <div className="user-box">
           <p className="muted">Роль: <span className="role-tag">{currentUser.role}</span></p>
           <p className="muted">Пользователь: <Nick user={currentUser} /></p>
-          <button className="small-btn" onClick={onLogout}>Выйти</button>
         </div>
       </aside>
 
@@ -620,7 +699,7 @@ function App() {
                   {filteredUsers.map((u) => (
                     <div className="card" key={u.id}>
                       <img className="avatar" src={u.avatar} alt={u.username} />
-                      <Nick user={u} />
+                      <button className="link-btn" onClick={() => openProfile(u.id)}><Nick user={u} /></button>
                       <p className="muted">{u.role}</p>
                       {u.id !== currentUser.id && <button className="small-btn" onClick={() => addFriend(u.id)}>{currentUser.friends.includes(u.id) ? "Уже в друзьях" : "Добавить в друзья"}</button>}
                     </div>
@@ -642,35 +721,93 @@ function App() {
           </section>
         )}
 
-        {activeView === "profile" && (
+        {activeView === "profile" && profileUser && (
           <section>
-            <h2 className="section-title">Личный кабинет</h2>
-            <div className="profile-banner-wrap"><img src={currentUser.banner} alt="banner" className="profile-banner" /></div>
+            <h2 className="section-title">Профиль</h2>
+            <div className="profile-banner-wrap"><img src={profileUser.banner} alt="banner" className="profile-banner" /></div>
             <div className="card" style={{ marginTop: 12 }}>
-              <div className="row"><img className="avatar" src={currentUser.avatar} alt="avatar" /><div><Nick user={currentUser} /><p className="muted">{currentUser.email}</p></div></div>
-              <label className="muted">Ник (можно менять 1 раз в 12 часов)</label>
-              <div className="row"><input className="field" value={newNick} onChange={(e) => setNewNick(e.target.value)} placeholder="Новый ник" /><button className="small-btn" onClick={changeNickname}>Обновить ник</button></div>
-              <label className="muted">Аватар URL</label>
-              <input className="field" value={currentUser.avatar} onChange={(e) => updateCurrentUser({ avatar: e.target.value })} />
-              <label className="muted">Обложка URL (рекомендуется 1280x500)</label>
-              <input className="field" value={currentUser.banner} onChange={(e) => updateCurrentUser({ banner: e.target.value })} />
-              {(currentUser.role === "admin" || currentUser.role === "moderator") && (
-                <div className="row">
-                  <input className="field" type="color" value={currentUser.nickStyle.color || "#ffffff"} onChange={(e) => updateCurrentUser({ nickStyle: { ...currentUser.nickStyle, color: e.target.value } })} />
-                  <label className="muted row"><input type="checkbox" checked={Boolean(currentUser.nickStyle.glow)} onChange={(e) => updateCurrentUser({ nickStyle: { ...currentUser.nickStyle, glow: e.target.checked } })} />Свечение ника</label>
+              <div className="row">
+                <img className="avatar" src={profileUser.avatar} alt="avatar" />
+                <div>
+                  <Nick user={profileUser} />
+                  <p className="muted">{profileUser.email}</p>
+                  <p className="muted">Роль: {profileUser.role}</p>
                 </div>
+              </div>
+
+              {profileUser.id !== currentUser.id && (
+                <button className="small-btn" onClick={() => addFriend(profileUser.id)}>{currentUser.friends.includes(profileUser.id) ? "Уже в друзьях" : "Добавить в друзья"}</button>
               )}
+
+              {profileUser.id === currentUser.id && (
+                <>
+                  {!editProfileMode && <div className="row"><button className="small-btn" onClick={() => setEditProfileMode(true)}>Редактировать профиль</button><button className="small-btn" onClick={onLogout}>Выйти из аккаунта</button></div>}
+
+                  {editProfileMode && (
+                    <div className="card" style={{ background: "#0b0b0b" }}>
+                      <label className="muted">Ник (можно менять 1 раз в 12 часов)</label>
+                      <input className="field" value={newNick} onChange={(e) => setNewNick(e.target.value)} placeholder="Новый ник" />
+                      <label className="muted">Подтверди текущий пароль для смены ника</label>
+                      <input className="field" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Текущий пароль" />
+                      <button className="small-btn" onClick={changeNickname}>Обновить ник</button>
+
+                      <label className="muted">Аватар (PNG/JPEG{currentUser.role === "admin" || currentUser.role === "moderator" ? "/GIF" : ""})</label>
+                      <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("avatar", e.target.files?.[0])} />
+
+                      <label className="muted">Обложка профиля (рекомендуется 1280x500)</label>
+                      <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("banner", e.target.files?.[0])} />
+
+                      {(currentUser.role === "admin" || currentUser.role === "moderator") && (
+                        <div className="row">
+                          <input className="field" type="color" value={currentUser.nickStyle.color || "#ffffff"} onChange={(e) => updateCurrentUser({ nickStyle: { ...currentUser.nickStyle, color: e.target.value } })} />
+                          <label className="muted row"><input type="checkbox" checked={Boolean(currentUser.nickStyle.glow)} onChange={(e) => updateCurrentUser({ nickStyle: { ...currentUser.nickStyle, glow: e.target.checked } })} />Свечение ника</label>
+                        </div>
+                      )}
+
+                      <div className="row">
+                        <button className="small-btn" onClick={() => setEditProfileMode(false)}>Готово</button>
+                        <button className="small-btn" onClick={onLogout}>Выйти из аккаунта</button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
               {profileError && <p className="spotify-error">{profileError}</p>}
               {profileMessage && <p className="ok-msg">{profileMessage}</p>}
             </div>
 
-            <h3 className="sub-title" style={{ marginTop: 18 }}>Друзья</h3>
-            <div className="user-grid">{myFriends.length === 0 ? <p className="muted">Пока друзей нет.</p> : myFriends.map((f) => <div className="card" key={f.id}><img className="avatar" src={f.avatar} alt={f.username} /><Nick user={f} /><p className="muted">{f.role}</p></div>)}</div>
-
-            {currentUser.role === "admin" && (
+            {profileUser.id === currentUser.id && (
               <>
-                <h3 className="sub-title" style={{ marginTop: 18 }}>Роли пользователей</h3>
-                <div className="user-grid">{users.map((u) => <div className="card" key={u.id}><Nick user={u} /><p className="muted">{u.email}</p><select className="field" value={u.role} onChange={(e) => setRole(u.id, e.target.value)}><option value="user">user</option><option value="moderator">moderator</option><option value="admin">admin</option></select></div>)}</div>
+                <h3 className="sub-title" style={{ marginTop: 18 }}>Друзья</h3>
+                <div className="user-grid">
+                  {myFriends.length === 0 ? <p className="muted">Пока друзей нет.</p> : myFriends.map((f) => (
+                    <div className="card" key={f.id}>
+                      <img className="avatar" src={f.avatar} alt={f.username} />
+                      <button className="link-btn" onClick={() => openProfile(f.id)}><Nick user={f} /></button>
+                      <p className="muted">{f.role}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {currentUser.role === "admin" && (
+                  <>
+                    <h3 className="sub-title" style={{ marginTop: 18 }}>Роли пользователей</h3>
+                    <div className="user-grid">
+                      {users.map((u) => (
+                        <div className="card" key={u.id}>
+                          <button className="link-btn" onClick={() => openProfile(u.id)}><Nick user={u} /></button>
+                          <p className="muted">{u.email}</p>
+                          <select className="field" value={u.role} onChange={(e) => setRole(u.id, e.target.value)}>
+                            <option value="user">user</option>
+                            <option value="moderator">moderator</option>
+                            <option value="admin">admin</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </>
             )}
           </section>
@@ -680,9 +817,16 @@ function App() {
           <section>
             <h2 className="section-title">Разработчики</h2>
             <div className="user-grid">
-              <div className="card"><h3>Jesse Williams</h3><p className="muted">Founder</p></div>
-              <div className="card"><h3>Chance Team</h3><p className="muted">Core Development</p></div>
-              <div className="card"><h3>Community Moderators</h3><p className="muted">Safety & Support</p></div>
+              <div className="card">
+                <button className="link-btn" onClick={() => openProfileByUsername("jessew1lliams")}>
+                  <span style={{ color: "#fff", textShadow: "0 0 10px #fff", fontWeight: 800 }}>jessew1lliams</span>
+                </button>
+                <p className="muted">Founder</p>
+              </div>
+              <div className="card">
+                <button className="link-btn" onClick={() => openProfileByUsername("HORONSKY")}>HORONSKY</button>
+                <p className="muted">Co-Founder / после регистрации получит такой же доступ</p>
+              </div>
             </div>
           </section>
         )}
@@ -722,3 +866,8 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
+
+

@@ -412,3 +412,45 @@ audio {
     padding-bottom: 280px;
   }
 }
+
+.logo-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.profile-nav {
+  margin-top: auto;
+}
+
+.link-btn {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.auth-logo {
+  width: 220px;
+  height: 220px;
+  margin: 0 auto 8px;
+  object-fit: contain;
+}
+
+.auth-form-lower {
+  margin-top: 16px;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+}
+
+.small-btn.active {
+  border-color: #fff;
+  background: #202020;
+}
