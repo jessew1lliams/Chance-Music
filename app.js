@@ -2,6 +2,8 @@
 
 const STORAGE_KEY = "chance_music_data_v2";
 const SITE_NAME = "Шанс | Music";
+const AUTH_USERS_KEY = "chance_music_users_v1";
+const AUTH_SESSION_KEY = "chance_music_session_v1";
 const SPOTIFY_SETTINGS_KEY = "chance_music_spotify_settings_v1";
 const SPOTIFY_AUTH_KEY = "chance_music_spotify_auth_v1";
 const SPOTIFY_VERIFIER_KEY = "chance_music_spotify_verifier_v1";
@@ -65,6 +67,10 @@ function App() {
   const [equalizerOpen, setEqualizerOpen] = useState(false);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
   const [activePlaylistId, setActivePlaylistId] = useState("");
+  const [authMode, setAuthMode] = useState("login");
+  const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
+  const [authError, setAuthError] = useState("");
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [spotifyClientId, setSpotifyClientId] = useState("");
   const [spotifyRedirectUri, setSpotifyRedirectUri] = useState(`${window.location.origin}${window.location.pathname}`);
@@ -77,6 +83,15 @@ function App() {
   const [spotifyError, setSpotifyError] = useState("");
 
   const audioRef = useRef(null);
+
+  useEffect(() => {
+    const sessionRaw = localStorage.getItem(AUTH_SESSION_KEY);
+    if (!sessionRaw) return;
+    try {
+      const parsed = JSON.parse(sessionRaw);
+      if (parsed?.email) setCurrentUser(parsed);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     const savedSettings = localStorage.getItem(SPOTIFY_SETTINGS_KEY);
@@ -333,6 +348,71 @@ function App() {
     setSpotifyTracks([]);
     setSpotifyActivePlaylistId("");
   };
+  const getUsers = () => {
+    try {
+      const raw = localStorage.getItem(AUTH_USERS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveUsers = (users) => {
+    localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
+  };
+
+  const onAuthSubmit = (e) => {
+    e.preventDefault();
+    setAuthError("");
+    const name = authForm.name.trim();
+    const email = authForm.email.trim().toLowerCase();
+    const password = authForm.password;
+
+    if (!email || !password || (authMode === "register" && !name)) {
+      setAuthError("Заполни все обязательные поля.");
+      return;
+    }
+
+    const users = getUsers();
+
+    if (authMode === "register") {
+      if (users.some((u) => u.email === email)) {
+        setAuthError("Пользователь с таким email уже существует.");
+        return;
+      }
+      const newUser = {
+        id: `u_${Date.now()}`,
+        name,
+        email,
+        password
+      };
+      users.push(newUser);
+      saveUsers(users);
+      const session = { id: newUser.id, name: newUser.name, email: newUser.email };
+      localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+      setCurrentUser(session);
+      setAuthForm({ name: "", email: "", password: "" });
+      return;
+    }
+
+    const found = users.find((u) => u.email === email && u.password === password);
+    if (!found) {
+      setAuthError("Неверный email или пароль.");
+      return;
+    }
+    const session = { id: found.id, name: found.name, email: found.email };
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+    setCurrentUser(session);
+    setAuthForm({ name: "", email: "", password: "" });
+  };
+
+  const onLogout = () => {
+    localStorage.removeItem(AUTH_SESSION_KEY);
+    setCurrentUser(null);
+    setAuthMode("login");
+    setAuthError("");
+  };
 
   const tracks = data?.tracks || [];
   const playlists = data?.playlists || [];
@@ -468,6 +548,50 @@ function App() {
     location.reload();
   };
 
+  if (!currentUser) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-card">
+          <div className="auth-brand">
+            <h1>{SITE_NAME}</h1>
+            <p className="muted">Вход в аккаунт</p>
+          </div>
+          <div className="auth-tabs">
+            <button className={`menu-btn ${authMode === "login" ? "active" : ""}`} onClick={() => setAuthMode("login")}>Вход</button>
+            <button className={`menu-btn ${authMode === "register" ? "active" : ""}`} onClick={() => setAuthMode("register")}>Регистрация</button>
+          </div>
+          <form className="auth-form" onSubmit={onAuthSubmit}>
+            {authMode === "register" && (
+              <input
+                className="field"
+                placeholder="Имя"
+                value={authForm.name}
+                onChange={(e) => setAuthForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            )}
+            <input
+              className="field"
+              type="email"
+              placeholder="Email"
+              value={authForm.email}
+              onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))}
+            />
+            <input
+              className="field"
+              type="password"
+              placeholder="Пароль"
+              value={authForm.password}
+              onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))}
+            />
+            {authError && <p className="spotify-error">{authError}</p>}
+            <button type="submit" className="small-btn auth-submit">
+              {authMode === "login" ? "Войти" : "Создать аккаунт"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
   if (!data) return <div className="main">Загрузка...</div>;
 
   const TrackCard = ({ track }) => (
@@ -500,6 +624,10 @@ function App() {
         </nav>
 
         <p className="muted">Лого можно менять в `data.json`, название зафиксировано.</p>
+        <div className="user-box">
+          <p className="muted">Пользователь: {currentUser.name || currentUser.email}</p>
+          <button className="small-btn" onClick={onLogout}>Выйти</button>
+        </div>
       </aside>
 
       <main className="main">
@@ -799,3 +927,7 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
+
