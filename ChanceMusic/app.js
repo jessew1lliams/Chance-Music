@@ -169,6 +169,7 @@ function App() {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
   const [playerMenuOpen, setPlayerMenuOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
+  const [playerNotice, setPlayerNotice] = useState("");
 
   const [eqOpen, setEqOpen] = useState(false);
   const [eqEnabled, setEqEnabled] = useState(true);
@@ -342,26 +343,41 @@ function App() {
   }, [volume]);
 
   const ensureAudioGraph = () => {
-    if (!audioRef.current || audioCtxRef.current) return;
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = ctx.createMediaElementSource(audioRef.current);
-    const master = ctx.createGain();
-    master.gain.value = Math.pow(10, eqLevelDb / 20);
-    source.connect(master);
-    let prev = master;
-    const filters = EQ_FREQUENCIES.map((freq, idx) => {
-      const f = ctx.createBiquadFilter();
-      f.type = idx === 0 ? "lowshelf" : idx === EQ_FREQUENCIES.length - 1 ? "highshelf" : "peaking";
-      f.frequency.value = freq;
-      f.Q.value = 1;
-      prev.connect(f);
-      prev = f;
-      return f;
-    });
-    prev.connect(ctx.destination);
-    audioCtxRef.current = ctx;
-    eqFiltersRef.current = filters;
-    eqGainRef.current = master;
+    if (!audioRef.current) return false;
+    if (audioCtxRef.current) return true;
+    let ctx = null;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctx.createMediaElementSource(audioRef.current);
+      const master = ctx.createGain();
+      master.gain.value = Math.pow(10, eqLevelDb / 20);
+      source.connect(master);
+      let prev = master;
+      const filters = EQ_FREQUENCIES.map((freq, idx) => {
+        const f = ctx.createBiquadFilter();
+        f.type = idx === 0 ? "lowshelf" : idx === EQ_FREQUENCIES.length - 1 ? "highshelf" : "peaking";
+        f.frequency.value = freq;
+        f.Q.value = 1;
+        prev.connect(f);
+        prev = f;
+        return f;
+      });
+      prev.connect(ctx.destination);
+      audioCtxRef.current = ctx;
+      eqFiltersRef.current = filters;
+      eqGainRef.current = master;
+      setPlayerNotice("");
+      return true;
+    } catch (err) {
+      if (ctx) ctx.close().catch(() => {});
+      audioCtxRef.current = null;
+      eqFiltersRef.current = [];
+      eqGainRef.current = null;
+      setEqEnabled(false);
+      setEqOpen(false);
+      setPlayerNotice("Эквалайзер отключен для этого трека (ограничение CORS), но воспроизведение работает.");
+      return false;
+    }
   };
 
   useEffect(() => {
@@ -1001,6 +1017,7 @@ function App() {
             </button>
           </div>
           <div className="muted player-time-left">Осталось: {formatTime(Math.max(0, (duration || 0) - (progress || 0)))}</div>
+          {playerNotice && <div className="muted player-time-left">{playerNotice}</div>}
         </div>
 
         <div className="player-right">
@@ -1135,6 +1152,8 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
 
 
 
