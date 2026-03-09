@@ -12,7 +12,7 @@ body {
   font-family: "Segoe UI", "Helvetica Neue", sans-serif;
   color: var(--text);
   background-color: #050505;
-  background: radial-gradient(circle at top, #0b0b0b, #030303 60%);
+  background: #050505 radial-gradient(circle at top, #0b0b0b, #030303 60%);
   background-image:
     linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
@@ -31,7 +31,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .user-box { margin-top: auto; display: grid; gap: 8px; }
 .profile-nav { margin-top: 4px; }
 
-.main { padding: 18px; padding-bottom: 210px; overflow-y: auto; }
+.main { padding: 18px; padding-bottom: 210px; overflow-y: auto; background: transparent; }
 .section-title { margin: 0 0 12px; font-size: 30px; }
 .sub-title { margin: 0 0 10px; font-size: 18px; }
 .muted { color: var(--muted); margin: 0; font-size: 12px; }
@@ -135,4 +135,5 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .main { padding-bottom: 340px; }
   .eq-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
 
