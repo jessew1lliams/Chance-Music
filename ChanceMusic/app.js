@@ -895,10 +895,12 @@ function App() {
           <button className="logo-link" onClick={() => { setActiveView("home"); setViewedProfileId(null); }} title="На главную">
             <span className="logo-crop"><img className="logo" src="./logo/logo2.png" alt="Лого" /></span>
           </button>
-          <button className="sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((v) => !v)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}>
-            <img className="toggle-icon" src={sidebarCollapsed ? "./icons/nav/collapse_right.png" : "./icons/nav/collapse_left.png"} alt="" />
-          </button>
         </div>
+
+        <button className={`sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : ""}`} type="button" onClick={() => setSidebarCollapsed((v) => !v)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}>
+          <img className="toggle-icon icon-left" src="./icons/nav/collapse_left.png" alt="" />
+          <img className="toggle-icon icon-right" src="./icons/nav/collapse_right.png" alt="" />
+        </button>
 
         <nav className="menu">
           <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}><img className="menu-icon" src="./icons/nav/nav_search.png" alt="" /><span>Поиск</span></button>
