@@ -896,7 +896,7 @@ function App() {
             <span className="logo-crop"><img className="logo" src="./logo/logo2.png" alt="Лого" /></span>
           </button>
           <button className="sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((v) => !v)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}>
-            {sidebarCollapsed ? "›" : "‹"}
+            <img className="toggle-icon" src={sidebarCollapsed ? "./icons/nav/collapse_right.png" : "./icons/nav/collapse_left.png"} alt="" />
           </button>
         </div>
 
@@ -1361,6 +1361,7 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
 
 
 

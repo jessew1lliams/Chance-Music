@@ -227,6 +227,7 @@ function App() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [editProfileMode, setEditProfileMode] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [currentTrackId, setCurrentTrackId] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -888,11 +889,16 @@ function App() {
   );
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <button className="logo-link" onClick={() => { setActiveView("home"); setViewedProfileId(null); }} title="На главную">
-          <img className="logo" src="./logo/logo2.png" alt="Лого" />
-        </button>
+    <div className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+        <div className="sidebar-top">
+          <button className="logo-link" onClick={() => { setActiveView("home"); setViewedProfileId(null); }} title="На главную">
+            <span className="logo-crop"><img className="logo" src="./logo/logo2.png" alt="Лого" /></span>
+          </button>
+          <button className="sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((v) => !v)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}>
+            <img className="toggle-icon" src={sidebarCollapsed ? "./icons/nav/collapse_right.png" : "./icons/nav/collapse_left.png"} alt="" />
+          </button>
+        </div>
 
         <nav className="menu">
           <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}><img className="menu-icon" src="./icons/nav/nav_search.png" alt="" /><span>Поиск</span></button>
@@ -906,7 +912,7 @@ function App() {
           <p className="muted">Пользователь: <Nick user={currentUser} /></p>
         </div>
 
-        <button className={`menu-btn profile-nav ${activeView === "profile" ? "active" : ""}`} onClick={() => { setActiveView("profile"); setViewedProfileId(null); setEditProfileMode(false); }}>Профиль</button>
+        <button className={`menu-btn profile-nav ${activeView === "profile" ? "active" : ""}`} onClick={() => { setActiveView("profile"); setViewedProfileId(null); setEditProfileMode(false); }}><img className="menu-icon profile-user-icon" src="./icons/nav/nav_user.png" alt="" /><span>Профиль</span></button>
       </aside>
 
       <main className="main">
@@ -1355,6 +1361,10 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
+
 
 
 
