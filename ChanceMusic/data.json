@@ -1,7 +1,7 @@
 ﻿{
   "site": {
     "name": "Шанс | Music",
-    "logo": "./logo.png"
+    "logo": "./logo/logo2.png"
   },
   "tracks": [
     {
@@ -30,3 +30,4 @@
     "collectionTrackIds": ["demo-track-1"]
   }
 }
+

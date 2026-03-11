@@ -895,10 +895,10 @@ function App() {
         </button>
 
         <nav className="menu">
-          <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}>Поиск</button>
-          <button className={`menu-btn ${activeView === "home" ? "active" : ""}`} onClick={() => { setActiveView("home"); setViewedProfileId(null); }}>Главная</button>
-          <button className={`menu-btn ${activeView === "collection" ? "active" : ""}`} onClick={() => setActiveView("collection")}>Подключения</button>
-          <button className={`menu-btn ${activeView === "developers" ? "active" : ""}`} onClick={() => setActiveView("developers")}>Разработчики</button>
+          <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}><img className="menu-icon" src="./icons/nav/nav_search.png" alt="" /><span>Поиск</span></button>
+          <button className={`menu-btn ${activeView === "home" ? "active" : ""}`} onClick={() => { setActiveView("home"); setViewedProfileId(null); }}><img className="menu-icon" src="./icons/nav/nav_home.png" alt="" /><span>Главная</span></button>
+          <button className={`menu-btn ${activeView === "collection" ? "active" : ""}`} onClick={() => setActiveView("collection")}><img className="menu-icon" src="./icons/nav/nav_connections.png" alt="" /><span>Подключения</span></button>
+          <button className={`menu-btn ${activeView === "developers" ? "active" : ""}`} onClick={() => setActiveView("developers")}><img className="menu-icon" src="./icons/nav/nav_developers.png" alt="" /><span>Разработчики</span></button>
         </nav>
 
         <div className="user-box">
