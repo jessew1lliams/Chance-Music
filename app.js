@@ -141,7 +141,7 @@ function normalizeAppData(raw) {
   const track = { ...SAMPLE_TRACK };
   return {
     ...source,
-    site: { ...(source.site || {}), logo: "./logo.png" },
+    site: { ...(source.site || {}), logo: "./logo/logo2.png" },
     tracks: [track],
     playlists: [{ id: "demo-playlist", name: "Пробный плейлист", cover: track.cover, trackIds: [track.id] }],
     user: { ...(source.user || {}), collectionTrackIds: [track.id] }
@@ -838,7 +838,7 @@ function App() {
     return (
       <div className="auth-screen">
         <div className="auth-card">
-          <img src="./logo.png" alt="logo" className="auth-logo" />
+          <img src="./logo/logo2.png" alt="logo" className="auth-logo" />
           <h1>{SITE_NAME}</h1>
           <div className="auth-tabs">
             <button className={`menu-btn ${authMode === "login" ? "active" : ""}`} onClick={() => setAuthMode("login")}>Вход</button>
@@ -891,7 +891,7 @@ function App() {
     <div className="app">
       <aside className="sidebar">
         <button className="logo-link" onClick={() => { setActiveView("home"); setViewedProfileId(null); }} title="На главную">
-          <img className="logo" src="./logo.png" alt="Лого" />
+          <img className="logo" src="./logo/logo2.png" alt="Лого" />
         </button>
 
         <nav className="menu">
@@ -1355,6 +1355,7 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
 
 
 
