@@ -96,6 +96,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .cover { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
 .avatar { width: 56px; height: 56px; border-radius: 999px; object-fit: cover; border: 1px solid #333; }
 .role-tag { text-transform: uppercase; border: 1px solid #3a3a3a; border-radius: 999px; padding: 2px 6px; font-size: 11px; }
+.role-admin-btn { cursor: pointer; background: #0a0a0a; color: #fff; }
+.role-admin-btn.active, .role-admin-btn:hover { border-color: #fff; background: #111; }
 .link-btn { background: transparent; border: 0; color: inherit; padding: 0; cursor: pointer; text-align: left; }
 
 .profile-banner-wrap {
@@ -380,6 +382,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .main { padding-bottom: 380px; }
   .eq-grid { grid-template-columns: repeat(5, minmax(26px, 1fr)); }
 }
+
 
 
 

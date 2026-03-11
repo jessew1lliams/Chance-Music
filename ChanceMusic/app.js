@@ -902,7 +902,7 @@ function App() {
         </nav>
 
         <div className="user-box">
-          <p className="muted">Роль: <span className="role-tag">{currentUser.role}</span></p>
+          <p className="muted">Роль: {isDeveloperOwner ? <button className={`role-tag role-admin-btn ${activeView === "admin" ? "active" : ""}`} onClick={() => setActiveView("admin")}>ADMIN</button> : <span className="role-tag">{currentUser.role}</span>}</p>
           <p className="muted">Пользователь: <Nick user={currentUser} /></p>
         </div>
 
@@ -1022,29 +1022,31 @@ function App() {
                   ))}
                 </div>
 
-                {isDeveloperOwner && (
-                  <>
-                    <h3 className="sub-title" style={{ marginTop: 18 }}>Роли пользователей</h3>
-                    <div className="user-grid">
-                      {users.map((u) => (
-                        <div className="card" key={u.id}>
-                          <button className="link-btn" onClick={() => openProfile(u.id)}><Nick user={u} /></button>
-                          <p className="muted">@{u.handle || normalizeHandle(u.username)}</p>
-                          <select className="field" value={u.role} onChange={(e) => setRole(u.id, e.target.value)}>
-                            <option value="user">user</option>
-                            <option value="moderator">moderator</option>
-                            <option value="admin">admin</option>
-                          </select>
-                          <label className="muted">Цвет ника</label>
-                          <input className="field" type="color" value={u.nickStyle?.color || "#ffffff"} onChange={(e) => setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, nickStyle: { ...(x.nickStyle || {}), color: e.target.value, glow: Boolean(x.nickStyle?.glow) } } : x))} />
-                          <label className="muted row"><input type="checkbox" checked={Boolean(u.nickStyle?.glow)} onChange={(e) => setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, nickStyle: { ...(x.nickStyle || {}), color: x.nickStyle?.color || "#ffffff", glow: e.target.checked } } : x))} />Свечение ника</label>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
               </>
             )}
+          </section>
+        )}
+
+        {activeView === "admin" && isDeveloperOwner && (
+          <section>
+            <h2 className="section-title">ADMIN</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>Панель управления ролями и стилем ников.</p>
+            <div className="user-grid">
+              {users.map((u) => (
+                <div className="card" key={u.id}>
+                  <button className="link-btn" onClick={() => openProfile(u.id)}><Nick user={u} /></button>
+                  <p className="muted">@{u.handle || normalizeHandle(u.username)}</p>
+                  <select className="field" value={u.role} onChange={(e) => setRole(u.id, e.target.value)}>
+                    <option value="user">user</option>
+                    <option value="moderator">moderator</option>
+                    <option value="admin">admin</option>
+                  </select>
+                  <label className="muted">Цвет ника</label>
+                  <input className="field" type="color" value={u.nickStyle?.color || "#ffffff"} onChange={(e) => setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, nickStyle: { ...(x.nickStyle || {}), color: e.target.value, glow: Boolean(x.nickStyle?.glow) } } : x))} />
+                  <label className="muted row"><input type="checkbox" checked={Boolean(u.nickStyle?.glow)} onChange={(e) => setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, nickStyle: { ...(x.nickStyle || {}), color: x.nickStyle?.color || "#ffffff", glow: e.target.checked } } : x))} />Свечение ника</label>
+                </div>
+              ))}
+            </div>
           </section>
         )}
 
