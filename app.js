@@ -17,6 +17,9 @@ const SPOTIFY_SCOPES = [
   "playlist-read-collaborative"
 ].join(" ");
 
+const SOUNDCLOUD_SETTINGS_KEY = "chance_music_soundcloud_settings_v1";
+const SOUNDCLOUD_AUTH_KEY = "chance_music_soundcloud_auth_v1";
+
 const SAMPLE_TRACK = {
   id: "demo-track-1",
   title: "Chance Demo",
@@ -256,6 +259,17 @@ function App() {
   const [spotifyLoading, setSpotifyLoading] = useState(false);
   const [spotifyError, setSpotifyError] = useState("");
 
+
+  const [connectionTab, setConnectionTab] = useState("spotify");
+  const [soundcloudClientId, setSoundcloudClientId] = useState("");
+  const [soundcloudProfileUrl, setSoundcloudProfileUrl] = useState("https://soundcloud.com/");
+  const [soundcloudConnected, setSoundcloudConnected] = useState(false);
+  const [soundcloudUser, setSoundcloudUser] = useState(null);
+  const [soundcloudPlaylists, setSoundcloudPlaylists] = useState([]);
+  const [soundcloudActivePlaylistId, setSoundcloudActivePlaylistId] = useState("");
+  const [soundcloudTracks, setSoundcloudTracks] = useState([]);
+  const [soundcloudLoading, setSoundcloudLoading] = useState(false);
+  const [soundcloudError, setSoundcloudError] = useState("");
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
@@ -320,11 +334,36 @@ function App() {
         if (p.accessToken && p.expiresAt > Date.now()) setSpotifyToken(p);
       } catch {}
     }
+
+    const savedSoundcloud = localStorage.getItem(SOUNDCLOUD_SETTINGS_KEY);
+    if (savedSoundcloud) {
+      try {
+        const p = JSON.parse(savedSoundcloud);
+        if (p.clientId) setSoundcloudClientId(p.clientId);
+        if (p.profileUrl) setSoundcloudProfileUrl(p.profileUrl);
+        if (p.connected) setSoundcloudConnected(true);
+      } catch {}
+    }
+    const savedSoundcloudAuth = localStorage.getItem(SOUNDCLOUD_AUTH_KEY);
+    if (savedSoundcloudAuth) {
+      try {
+        const p = JSON.parse(savedSoundcloudAuth);
+        if (p?.id) setSoundcloudUser(p);
+      } catch {}
+    }
   }, []);
 
   useEffect(() => {
     safeSetLocalStorage(SPOTIFY_SETTINGS_KEY, JSON.stringify({ clientId: spotifyClientId.trim(), redirectUri: spotifyRedirectUri.trim() }));
   }, [spotifyClientId, spotifyRedirectUri]);
+
+  useEffect(() => {
+    safeSetLocalStorage(SOUNDCLOUD_SETTINGS_KEY, JSON.stringify({
+      clientId: soundcloudClientId.trim(),
+      profileUrl: soundcloudProfileUrl.trim(),
+      connected: soundcloudConnected
+    }));
+  }, [soundcloudClientId, soundcloudProfileUrl, soundcloudConnected]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -590,6 +629,115 @@ function App() {
     setSpotifyActivePlaylistId("");
   };
 
+
+  const soundcloudApi = async (path, params = {}) => {
+    const clientId = soundcloudClientId.trim();
+    if (!clientId) throw new Error("Укажи SoundCloud Client ID.");
+    const qp = new URLSearchParams({ ...params, client_id: clientId });
+    const sep = path.includes("?") ? "&" : "?";
+    const res = await fetch(`https://api.soundcloud.com${path}${sep}${qp.toString()}`);
+    const raw = await res.text();
+    let json = null;
+    try { json = raw ? JSON.parse(raw) : {}; } catch { json = null; }
+    if (!res.ok) {
+      const msg = json?.errors?.[0]?.error_message || json?.error || raw || "Ошибка SoundCloud API";
+      throw new Error(`[${res.status}] ${msg}`);
+    }
+    if (!json) throw new Error("SoundCloud вернул неожиданный формат ответа.");
+    return json;
+  };
+
+  const normalizeSoundcloudTracks = (list) => (Array.isArray(list) ? list : []).filter(Boolean).map((t) => ({
+    id: t.id || t.urn || t.permalink_url,
+    title: t.title || "Без названия",
+    artist: t.user?.username || soundcloudUser?.username || "SoundCloud",
+    artwork: t.artwork_url || t.user?.avatar_url || "https://placehold.co/600x600/000/fff?text=SoundCloud",
+    link: t.permalink_url || t.uri,
+    durationMs: t.duration || 0
+  }));
+
+  const loadSoundcloudHome = async () => {
+    const clientId = soundcloudClientId.trim();
+    const profileUrl = soundcloudProfileUrl.trim();
+    if (!clientId || !profileUrl) {
+      setSoundcloudError("Укажи SoundCloud Client ID и ссылку на профиль.");
+      return;
+    }
+    setSoundcloudLoading(true);
+    setSoundcloudError("");
+    try {
+      const resolveRes = await fetch(`https://api.soundcloud.com/resolve?url=${encodeURIComponent(profileUrl)}&client_id=${encodeURIComponent(clientId)}`);
+      const raw = await resolveRes.text();
+      let resolved = null;
+      try { resolved = raw ? JSON.parse(raw) : {}; } catch { resolved = null; }
+      if (!resolveRes.ok || !resolved) {
+        const msg = resolved?.errors?.[0]?.error_message || resolved?.error || raw || "Не удалось подключить SoundCloud";
+        throw new Error(`[${resolveRes.status}] ${msg}`);
+      }
+
+      if (resolved.kind === "playlist") {
+        setSoundcloudUser(resolved.user || null);
+        setSoundcloudPlaylists([resolved]);
+        setSoundcloudActivePlaylistId(String(resolved.id));
+        setSoundcloudTracks(normalizeSoundcloudTracks(resolved.tracks || []));
+      } else {
+        const user = resolved;
+        setSoundcloudUser(user);
+        const primary = await soundcloudApi(`/users/${user.id}/playlists`, { limit: 20 });
+        const p1 = Array.isArray(primary) ? primary : (primary?.collection || []);
+        const allPlaylists = p1.length ? p1 : (await soundcloudApi(`/users/${user.id}/playlists_without_albums`, { limit: 20 }));
+        const list = Array.isArray(allPlaylists) ? allPlaylists : (allPlaylists?.collection || []);
+        setSoundcloudPlaylists(list);
+        setSoundcloudActivePlaylistId((prev) => prev || String(list?.[0]?.id || ""));
+      }
+
+      setSoundcloudConnected(true);
+      safeSetLocalStorage(SOUNDCLOUD_AUTH_KEY, JSON.stringify({
+        id: resolved?.user?.id || resolved?.id || "",
+        username: resolved?.user?.username || resolved?.username || ""
+      }));
+    } catch (err) {
+      setSoundcloudError(err.message);
+    } finally {
+      setSoundcloudLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!soundcloudActivePlaylistId || !soundcloudConnected) {
+      setSoundcloudTracks([]);
+      return;
+    }
+    const listItem = soundcloudPlaylists.find((p) => String(p.id) === String(soundcloudActivePlaylistId));
+    if (Array.isArray(listItem?.tracks) && listItem.tracks.length) {
+      setSoundcloudTracks(normalizeSoundcloudTracks(listItem.tracks));
+      return;
+    }
+
+    const loadTracks = async () => {
+      setSoundcloudLoading(true);
+      setSoundcloudError("");
+      try {
+        const playlist = await soundcloudApi(`/playlists/${soundcloudActivePlaylistId}`);
+        setSoundcloudTracks(normalizeSoundcloudTracks(playlist?.tracks || []));
+      } catch (err) {
+        setSoundcloudError(err.message);
+      } finally {
+        setSoundcloudLoading(false);
+      }
+    };
+    loadTracks();
+  }, [soundcloudActivePlaylistId, soundcloudConnected]);
+
+  const soundcloudLogout = () => {
+    setSoundcloudConnected(false);
+    setSoundcloudUser(null);
+    setSoundcloudPlaylists([]);
+    setSoundcloudTracks([]);
+    setSoundcloudActivePlaylistId("");
+    setSoundcloudError("");
+    localStorage.removeItem(SOUNDCLOUD_AUTH_KEY);
+  };
   const onAuthSubmit = (e) => {
     e.preventDefault();
     setAuthError("");
@@ -1084,76 +1232,156 @@ function App() {
 
         {activeView === "collection" && (
           <section>
-            <h2 className="section-title spotify-title"><span className="spotify-icon" aria-hidden="true"><img src="./icons/spotify_logo.png" alt="Spotify" /></span><span>Spotify</span></h2>
-
-            <div className="card">
-              <div className="row">
-                <input className="field" placeholder="Client ID Spotify" value={spotifyClientId} onChange={(e) => setSpotifyClientId(e.target.value)} />
-                <input className="field" placeholder="Redirect URI" value={spotifyRedirectUri} onChange={(e) => setSpotifyRedirectUri(e.target.value)} />
-              </div>
-
-              <div className="row">
-                {!spotifyToken && <button className="small-btn" onClick={startSpotifyLogin}>Войти через Spotify</button>}
-                {spotifyToken && <button className="small-btn" onClick={loadSpotifyHome}>Обновить Spotify</button>}
-                {spotifyToken && <button className="small-btn" onClick={spotifyLogout}>Выйти из Spotify</button>}
-              </div>
-
-              {spotifyUser && (
-                <p className="muted">
-                  Вход выполнен: {spotifyUser.display_name || spotifyUser.id} · Тариф: {spotifyUser.product || "неизвестно"} · Аккаунт: {spotifyUser.id}
-                </p>
-              )}
-
-              {spotifyError && <p className="spotify-error">{spotifyError}</p>}
-              {spotifyLoading && <p className="muted">Загрузка данных Spotify...</p>}
+            <div className="row" style={{ marginBottom: 12 }}>
+              <button className={`small-btn ${connectionTab === "spotify" ? "active" : ""}`} onClick={() => setConnectionTab("spotify")}>Spotify</button>
+              <button className={`small-btn ${connectionTab === "soundcloud" ? "active" : ""}`} onClick={() => setConnectionTab("soundcloud")}>SoundCloud</button>
             </div>
 
-            <div className="card" style={{ marginTop: 12 }}>
-              <h3>Правила подключения Spotify</h3>
-              <ul className="spotify-rules">
-                <li>Используй один и тот же аккаунт в приложении и в Spotify for Developers.</li>
-                <li>Проверь, что у аккаунта активен Premium и подтвержден способ оплаты.</li>
-                <li>Если видишь 403 по стране, это региональное ограничение аккаунта Spotify, а не ошибка сайта.</li>
-                <li>VPN обычно не помогает, если страна зафиксирована в профиле Spotify.</li>
-                <li>Client ID и Redirect URI должны полностью совпадать с настройками Spotify Dashboard.</li>
-              </ul>
-            </div>
+            {connectionTab === "spotify" && (
+              <>
+                <h2 className="section-title spotify-title"><span className="spotify-icon" aria-hidden="true"><img src="./icons/spotify_logo.png" alt="Spotify" /></span><span>Spotify</span></h2>
 
-            {spotifyPlaylists.length > 0 && (
-              <div className="playlist-list" style={{ marginTop: 12 }}>
-                {spotifyPlaylists.map((p) => (
-                  <div key={p.id} className={`card ${spotifyActivePlaylistId === p.id ? "playlist-active" : ""}`}>
-                    <img className="cover" src={p.images?.[0]?.url || "https://placehold.co/600x600/000/fff?text=Spotify"} alt={p.name} />
-                    <h3>{p.name}</h3>
-                    <div className="row">
-                      <button className="small-btn" onClick={() => setSpotifyActivePlaylistId(p.id)}>Открыть</button>
-                      <a className="small-btn" href={p.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть в Spotify</a>
-                    </div>
+                <div className="card">
+                  <div className="row">
+                    <input className="field" placeholder="Client ID Spotify" value={spotifyClientId} onChange={(e) => setSpotifyClientId(e.target.value)} />
+                    <input className="field" placeholder="Redirect URI" value={spotifyRedirectUri} onChange={(e) => setSpotifyRedirectUri(e.target.value)} />
                   </div>
-                ))}
-              </div>
+
+                  <div className="row">
+                    {!spotifyToken && <button className="small-btn" onClick={startSpotifyLogin}>Войти через Spotify</button>}
+                    {spotifyToken && <button className="small-btn" onClick={loadSpotifyHome}>Обновить Spotify</button>}
+                    {spotifyToken && <button className="small-btn" onClick={spotifyLogout}>Выйти из Spotify</button>}
+                  </div>
+
+                  {spotifyUser && (
+                    <p className="muted">
+                      Вход выполнен: {spotifyUser.display_name || spotifyUser.id} · Тариф: {spotifyUser.product || "неизвестно"} · Аккаунт: {spotifyUser.id}
+                    </p>
+                  )}
+
+                  {spotifyError && <p className="spotify-error">{spotifyError}</p>}
+                  {spotifyLoading && <p className="muted">Загрузка данных Spotify...</p>}
+                </div>
+
+                <div className="card" style={{ marginTop: 12 }}>
+                  <h3>Правила подключения Spotify</h3>
+                  <ul className="spotify-rules">
+                    <li>Используй один и тот же аккаунт в приложении и в Spotify for Developers.</li>
+                    <li>Проверь, что у аккаунта активен Premium и подтвержден способ оплаты.</li>
+                    <li>Если видишь 403 по стране, это региональное ограничение аккаунта Spotify, а не ошибка сайта.</li>
+                    <li>VPN обычно не помогает, если страна зафиксирована в профиле Spotify.</li>
+                    <li>Client ID и Redirect URI должны полностью совпадать с настройками Spotify Dashboard.</li>
+                  </ul>
+                </div>
+
+                {spotifyPlaylists.length > 0 && (
+                  <div className="playlist-list" style={{ marginTop: 12 }}>
+                    {spotifyPlaylists.map((p) => (
+                      <div key={p.id} className={`card ${spotifyActivePlaylistId === p.id ? "playlist-active" : ""}`}>
+                        <img className="cover" src={p.images?.[0]?.url || "https://placehold.co/600x600/000/fff?text=Spotify"} alt={p.name} />
+                        <h3>{p.name}</h3>
+                        <div className="row">
+                          <button className="small-btn" onClick={() => setSpotifyActivePlaylistId(p.id)}>Открыть</button>
+                          <a className="small-btn" href={p.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть в Spotify</a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {spotifyActivePlaylistId && (
+                  <div className="card" style={{ marginTop: 12 }}>
+                    <h3>Треки выбранного плейлиста</h3>
+                    {spotifyTracks.length === 0 ? (
+                      <p className="muted">Треки недоступны или доступ ограничен аккаунтом.</p>
+                    ) : (
+                      spotifyTracks.map((t) => (
+                        <div key={t.id || t.uri} className="playlist-track-row">
+                          <div>
+                            <div>{t.name}</div>
+                            <div className="muted">{(t.artists || []).map((a) => a.name).join(", ")}</div>
+                          </div>
+                          <div className="row">
+                            {t.preview_url && <audio controls src={t.preview_url} preload="none" />}
+                            <a className="small-btn" href={t.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть</a>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
-            {spotifyActivePlaylistId && (
-              <div className="card" style={{ marginTop: 12 }}>
-                <h3>Треки выбранного плейлиста</h3>
-                {spotifyTracks.length === 0 ? (
-                  <p className="muted">Треки недоступны или доступ ограничен аккаунтом.</p>
-                ) : (
-                  spotifyTracks.map((t) => (
-                    <div key={t.id || t.uri} className="playlist-track-row">
-                      <div>
-                        <div>{t.name}</div>
-                        <div className="muted">{(t.artists || []).map((a) => a.name).join(", ")}</div>
+            {connectionTab === "soundcloud" && (
+              <>
+                <h2 className="section-title">SoundCloud</h2>
+
+                <div className="card">
+                  <div className="row">
+                    <input className="field" placeholder="Client ID SoundCloud" value={soundcloudClientId} onChange={(e) => setSoundcloudClientId(e.target.value)} />
+                    <input className="field" placeholder="Ссылка на профиль или плейлист SoundCloud" value={soundcloudProfileUrl} onChange={(e) => setSoundcloudProfileUrl(e.target.value)} />
+                  </div>
+                  <div className="row">
+                    {!soundcloudConnected && <button className="small-btn" onClick={loadSoundcloudHome}>Подключить SoundCloud</button>}
+                    {soundcloudConnected && <button className="small-btn" onClick={loadSoundcloudHome}>Обновить SoundCloud</button>}
+                    {soundcloudConnected && <button className="small-btn" onClick={soundcloudLogout}>Выйти из SoundCloud</button>}
+                  </div>
+
+                  {soundcloudUser && <p className="muted">Подключен аккаунт: {soundcloudUser.username || soundcloudUser.full_name || soundcloudUser.permalink}</p>}
+                  {soundcloudError && <p className="spotify-error">{soundcloudError}</p>}
+                  {soundcloudLoading && <p className="muted">Загрузка данных SoundCloud...</p>}
+                </div>
+
+                <div className="card" style={{ marginTop: 12 }}>
+                  <h3>Правила подключения SoundCloud</h3>
+                  <ul className="spotify-rules">
+                    <li>Создай приложение в SoundCloud for Developers и скопируй Client ID.</li>
+                    <li>Вставь ссылку на профиль вида `https://soundcloud.com/username` или ссылку на плейлист.</li>
+                    <li>Если API отвечает ошибкой 401/403, чаще всего невалидный Client ID или лимит доступа.</li>
+                    <li>Для прослушивания полного трека используй кнопку "Открыть в SoundCloud".</li>
+                  </ul>
+                </div>
+
+                {soundcloudPlaylists.length > 0 && (
+                  <div className="playlist-list" style={{ marginTop: 12 }}>
+                    {soundcloudPlaylists.map((p) => (
+                      <div key={p.id || p.urn} className={`card ${String(soundcloudActivePlaylistId) === String(p.id) ? "playlist-active" : ""}`}>
+                        <img className="cover" src={p.artwork_url || p.user?.avatar_url || "https://placehold.co/600x600/000/fff?text=SoundCloud"} alt={p.title} />
+                        <h3>{p.title}</h3>
+                        <div className="row">
+                          <button className="small-btn" onClick={() => setSoundcloudActivePlaylistId(String(p.id))}>Открыть</button>
+                          {p.permalink_url && <a className="small-btn" href={p.permalink_url} target="_blank" rel="noreferrer">Открыть в SoundCloud</a>}
+                        </div>
                       </div>
-                      <div className="row">
-                        {t.preview_url && <audio controls src={t.preview_url} preload="none" />}
-                        <a className="small-btn" href={t.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть</a>
-                      </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
-              </div>
+
+                {soundcloudActivePlaylistId && (
+                  <div className="card" style={{ marginTop: 12 }}>
+                    <h3>Треки выбранного плейлиста</h3>
+                    {soundcloudTracks.length === 0 ? (
+                      <p className="muted">Треки недоступны или плейлист пустой.</p>
+                    ) : (
+                      soundcloudTracks.map((t) => (
+                        <div key={t.id} className="playlist-track-row">
+                          <div className="row" style={{ gap: 10 }}>
+                            <img src={t.artwork} alt={t.title} style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }} />
+                            <div>
+                              <div>{t.title}</div>
+                              <div className="muted">{t.artist} · {formatTime((t.durationMs || 0) / 1000)}</div>
+                            </div>
+                          </div>
+                          <div className="row">
+                            {t.link && <a className="small-btn" href={t.link} target="_blank" rel="noreferrer">Открыть</a>}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </section>
         )}
@@ -1363,6 +1591,7 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
 
 
 
