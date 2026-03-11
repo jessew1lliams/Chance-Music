@@ -124,6 +124,30 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .profile-menu { position: absolute; right: 12px; bottom: 12px; }
 .gear-btn { border: 0; background: rgba(0,0,0,0.7); color: #fff; width: 40px; height: 40px; border-radius: 999px; cursor: pointer; font-size: 19px; }
 .profile-menu-popover { position: absolute; right: 0; bottom: 48px; width: 230px; background: #111; border: 1px solid #303030; border-radius: 12px; padding: 8px; display: grid; gap: 8px; }
+.profile-stats {
+  width: min(100%, 640px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.profile-stat-item {
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  background: #0b0b0b;
+  padding: 10px 8px;
+  text-align: center;
+}
+.profile-stat-value {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.profile-stat-label {
+  margin-top: 4px;
+  color: #9a9a9a;
+  font-size: 12px;
+}
 
 .player {
   position: fixed;
@@ -355,6 +379,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .main { padding-bottom: 380px; }
   .eq-grid { grid-template-columns: repeat(5, minmax(26px, 1fr)); }
 }
+
 
 
 
