@@ -1074,7 +1074,7 @@ function App() {
 
         {activeView === "collection" && (
           <section>
-            <h2 className="section-title spotify-title"><span className="spotify-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" role="img"><circle cx="12" cy="12" r="11" fill="#1db954"/><path d="M6.8 9.2c3.6-1.1 7.8-.8 10.8.9" stroke="#0a0a0a" strokeWidth="1.8" strokeLinecap="round" fill="none"/><path d="M7.4 12.1c3-0.9 6.4-.6 8.9.8" stroke="#0a0a0a" strokeWidth="1.6" strokeLinecap="round" fill="none"/><path d="M8 15c2.3-.6 4.8-.4 6.8.6" stroke="#0a0a0a" strokeWidth="1.4" strokeLinecap="round" fill="none"/></svg></span><span>Spotify</span></h2>
+            <h2 className="section-title spotify-title"><span className="spotify-icon" aria-hidden="true"><img src="./icons/spotify_logo.png" alt="Spotify" /></span><span>Spotify</span></h2>
 
             <div className="card">
               <div className="row">
@@ -1353,6 +1353,8 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
 
 
 

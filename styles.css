@@ -370,6 +370,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .spotify-rules li { color: var(--muted); line-height: 1.4; }
 .spotify-title { display: inline-flex; align-items: center; gap: 10px; }
 .spotify-icon { display: inline-flex; width: 38px; height: 38px; }
+.spotify-icon img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 @media (max-width: 1150px) {
   .app { grid-template-columns: 1fr; }
@@ -379,6 +380,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .main { padding-bottom: 380px; }
   .eq-grid { grid-template-columns: repeat(5, minmax(26px, 1fr)); }
 }
+
 
 
 
