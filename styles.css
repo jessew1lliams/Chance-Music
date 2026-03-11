@@ -33,8 +33,23 @@ button, input, textarea, select { font: inherit; color: inherit; }
   flex-direction: column;
   gap: 14px;
 }
-.logo { width: 74px; height: 74px; object-fit: contain; border: 0; background: transparent; }
-.logo-link { border: 0; background: transparent; padding: 0; width: fit-content; cursor: pointer; }
+.logo {
+  width: 100%;
+  max-width: 168px;
+  height: auto;
+  object-fit: contain;
+  border: 0;
+  background: transparent;
+}
+.logo-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+}
 .menu { display: flex; flex-direction: column; gap: 8px; }
 .menu-btn {
   border: 1px solid #202020;
@@ -382,6 +397,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .main { padding-bottom: 380px; }
   .eq-grid { grid-template-columns: repeat(5, minmax(26px, 1fr)); }
 }
+
 
 
 
