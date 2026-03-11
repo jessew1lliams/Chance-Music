@@ -35,6 +35,8 @@ const SITE_NAME = "Шанс | Music";
 const ICONS = {
   play: "./icons/icon_play.svg",
   pause: "./icons/icon_pause.svg",
+  prev: "./icons/icon_prev.svg",
+  next: "./icons/icon_next.svg",
   volume: "./icons/icon_volume.svg",
   more: "./icons/icon_more.svg",
   likeOutline: "./icons/icon_like_outline.svg",
@@ -105,7 +107,7 @@ function normalizeUsers(users) {
     handle: normalizeHandle(u.handle || u.tag || u.username || u.name || "user"),
     email: (u.email || "").trim().toLowerCase(),
     password: u.password || "",
-    role: isJesseAccount(u) ? "admin" : (u.role || "user"),
+    role: isDeveloperAccount(u) ? "admin" : (u.role || "user"),
     avatar: u.avatar || "https://placehold.co/160x160/000/fff?text=Avatar",
     banner: u.banner || "https://placehold.co/1280x500/000/fff?text=Banner",
     friends: Array.isArray(u.friends) ? u.friends : [],
@@ -163,6 +165,24 @@ function isJesseAccount(user) {
   const uname = String(user?.username || "").toLowerCase();
   const handle = normalizeHandle(user?.handle);
   return uname === "jessew1lliams" || handle === "jessew1lliams";
+}
+function isHoronskyAccount(user) {
+  const uname = String(user?.username || "").toLowerCase();
+  const handle = normalizeHandle(user?.handle);
+  return uname === "horonsky" || handle === "horonsky";
+}
+
+function isDeveloperAccount(user) {
+  return isJesseAccount(user) || isHoronskyAccount(user);
+}
+
+function safeSetLocalStorage(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 
@@ -249,6 +269,7 @@ function App() {
   }, [users, currentUser, viewedProfileId]);
 
   const isJesseOwner = Boolean(currentUser && isJesseAccount(currentUser));
+  const isDeveloperOwner = Boolean(currentUser && isDeveloperAccount(currentUser));
 
   const tracks = data?.tracks || [];
   const playlists = data?.playlists || [];
@@ -257,14 +278,17 @@ function App() {
   const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
 
   useEffect(() => {
-    localStorage.setItem(AUTH_USERS_KEY, JSON.stringify(users));
+    const ok = safeSetLocalStorage(AUTH_USERS_KEY, JSON.stringify(users));
+    if (!ok) {
+      setProfileError("Не удалось сохранить изменения профиля. Файл изображения слишком большой для браузера.");
+    }
   }, [users]);
 
   useEffect(() => {
     setUsers((prev) => {
       let changed = false;
       const next = prev.map((u) => {
-        if (!isJesseAccount(u)) return u;
+        if (!isDeveloperAccount(u)) return u;
         if (u.role === "admin") return u;
         changed = true;
         return { ...u, role: "admin" };
@@ -276,7 +300,7 @@ function App() {
 
   useEffect(() => {
     if (!session) localStorage.removeItem(AUTH_SESSION_KEY);
-    else localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+    else safeSetLocalStorage(AUTH_SESSION_KEY, JSON.stringify(session));
   }, [session]);
 
   useEffect(() => {
@@ -298,7 +322,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(SPOTIFY_SETTINGS_KEY, JSON.stringify({ clientId: spotifyClientId.trim(), redirectUri: spotifyRedirectUri.trim() }));
+    safeSetLocalStorage(SPOTIFY_SETTINGS_KEY, JSON.stringify({ clientId: spotifyClientId.trim(), redirectUri: spotifyRedirectUri.trim() }));
   }, [spotifyClientId, spotifyRedirectUri]);
 
   useEffect(() => {
@@ -383,7 +407,7 @@ function App() {
 
   useEffect(() => {
     if (!data) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data, null, 2));
+    safeSetLocalStorage(STORAGE_KEY, JSON.stringify(data, null, 2));
   }, [data]);
 
   useEffect(() => {
@@ -393,6 +417,25 @@ function App() {
 
   const ensureAudioGraph = () => {
     if (!audioRef.current) return false;
+    try {
+      const src = currentTrack?.audio || audioRef.current.currentSrc || audioRef.current.src || "";
+      if (src) {
+        const parsed = new URL(src, window.location.href);
+        const isCrossOrigin = parsed.origin !== window.location.origin;
+        if (isCrossOrigin) {
+          if (audioCtxRef.current) {
+            audioCtxRef.current.close().catch(() => {});
+          }
+          audioCtxRef.current = null;
+          eqFiltersRef.current = [];
+          eqGainRef.current = null;
+          setEqEnabled(false);
+          setEqOpen(false);
+          setPlayerNotice("Эквалайзер отключен для внешнего трека, чтобы воспроизведение работало без тишины.");
+          return false;
+        }
+      }
+    } catch (_) {}
     if (audioCtxRef.current) return true;
     let ctx = null;
     try {
@@ -566,7 +609,7 @@ function App() {
         (existingByUsername && isDevPlaceholder(existingByUsername) ? existingByUsername : null) ||
         (existingByHandle && isDevPlaceholder(existingByHandle) ? existingByHandle : null);
       let role = "user";
-      if (username.toLowerCase() === "horonsky") role = "admin";
+      if (normalizeHandle(username) === "horonsky" || handle === "horonsky") role = "admin";
       if (claimDevUser) {
         const claimed = {
           ...claimDevUser,
@@ -574,7 +617,7 @@ function App() {
           handle,
           email,
           password,
-          role: isJesseAccount({ username, handle }) ? "admin" : (claimDevUser.role || role)
+          role: isDeveloperAccount({ username, handle }) ? "admin" : (claimDevUser.role || role)
         };
         setUsers((prev) => prev.map((u) => (u.id === claimDevUser.id ? claimed : u)));
         setSession({ userId: claimed.id });
@@ -627,12 +670,23 @@ function App() {
   };
 
   const setRole = (id, role) => {
-    if (!isJesseOwner) return;
+    if (!isDeveloperOwner) return;
     setUsers((prev) => prev.map((u) => {
       if (u.id !== id) return u;
       if (isJesseAccount(u)) return { ...u, role: "admin" };
+      if (isHoronskyAccount(u) && role !== "admin") return { ...u, role: "admin" };
       return { ...u, role };
     }));
+  };
+  const updateCurrentUserNickStyle = (patch) => {
+    if (!currentUser) return;
+    const privileged = currentUser.role === "admin" || currentUser.role === "moderator" || isDeveloperAccount(currentUser);
+    if (!privileged) return;
+    setUsers((prev) => prev.map((u) => (
+      u.id === currentUser.id
+        ? { ...u, nickStyle: { ...(u.nickStyle || {}), ...patch } }
+        : u
+    )));
   };
 
   const addFriend = (targetId) => {
@@ -679,6 +733,12 @@ function App() {
     const privileged = currentUser.role === "admin" || currentUser.role === "moderator";
     const allowed = privileged ? ["image/png", "image/jpeg", "image/gif"] : ["image/png", "image/jpeg"];
     if (!allowed.includes(file.type)) return setProfileError(privileged ? "Можно PNG, JPEG, GIF." : "Можно только PNG/JPEG.");
+    const maxBytes = file.type === "image/gif" ? 2 * 1024 * 1024 : 4 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      return setProfileError(file.type === "image/gif"
+        ? "GIF слишком большой. Используй GIF до 2 МБ."
+        : "Файл слишком большой. Используй изображение до 4 МБ.");
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       const value = e.target?.result;
@@ -726,6 +786,18 @@ function App() {
     }
     audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
+  };
+
+  const playPrevTrack = () => {
+    if (!tracks.length) return;
+    const prevIndex = trackIndex <= 0 ? tracks.length - 1 : trackIndex - 1;
+    playTrackById(tracks[prevIndex].id);
+  };
+
+  const playNextTrack = () => {
+    if (!tracks.length) return;
+    const nextIndex = trackIndex >= tracks.length - 1 ? 0 : trackIndex + 1;
+    playTrackById(tracks[nextIndex].id);
   };
 
   const onStop = () => {
@@ -907,6 +979,25 @@ function App() {
                 <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("avatar", e.target.files?.[0])} />
                 <label className="muted">Баннер (точно 1280x500)</label>
                 <input className="field" type="file" accept={currentUser.role === "admin" || currentUser.role === "moderator" ? ".png,.jpg,.jpeg,.gif" : ".png,.jpg,.jpeg"} onChange={(e) => onImagePick("banner", e.target.files?.[0])} />
+                {(currentUser.role === "admin" || currentUser.role === "moderator" || isDeveloperAccount(currentUser)) && (
+                  <>
+                    <label className="muted">Цвет ника</label>
+                    <input
+                      className="field"
+                      type="color"
+                      value={currentUser.nickStyle?.color || "#ffffff"}
+                      onChange={(e) => updateCurrentUserNickStyle({ color: e.target.value, glow: Boolean(currentUser.nickStyle?.glow) })}
+                    />
+                    <label className="muted row">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(currentUser.nickStyle?.glow)}
+                        onChange={(e) => updateCurrentUserNickStyle({ color: currentUser.nickStyle?.color || "#ffffff", glow: e.target.checked })}
+                      />
+                      Свечение ника
+                    </label>
+                  </>
+                )}
               </div>
             )}
 
@@ -931,7 +1022,7 @@ function App() {
                   ))}
                 </div>
 
-                {isJesseOwner && (
+                {isDeveloperOwner && (
                   <>
                     <h3 className="sub-title" style={{ marginTop: 18 }}>Роли пользователей</h3>
                     <div className="user-grid">
@@ -961,16 +1052,23 @@ function App() {
           <section>
             <h2 className="section-title">Разработчики</h2>
             <div className="user-grid">
-              <div className="card">
-                <button className="link-btn" onClick={() => openProfileByUsername("jessew1lliams")}>
-                  <span style={{ color: "#fff", textShadow: "0 0 10px #fff", fontWeight: 800 }}>jessew1lliams</span>
-                </button>
-                <p className="muted">Founder</p>
-              </div>
-              <div className="card">
-                <button className="link-btn" onClick={() => openProfileByUsername("HORONSKY")}>HORONSKY</button>
-                <p className="muted">Co-Founder / после регистрации получит такой же доступ</p>
-              </div>
+              {[
+                { id: "dev_jessew1lliams", key: "jessew1lliams", title: "Founder" },
+                { id: "dev_horonsky", key: "horonsky", title: "Co-Founder" }
+              ].map((dev) => {
+                const found = users.find((u) => u.id === dev.id || normalizeHandle(u.handle || u.username) === dev.key || (dev.key === "jessew1lliams" ? isJesseAccount(u) : isHoronskyAccount(u)));
+                return (
+                  <div className="card" key={dev.key}>
+                    {found ? (
+                      <button className="link-btn" onClick={() => openProfile(found.id)}><Nick user={found} /></button>
+                    ) : (
+                      <span className="muted">@{dev.key}</span>
+                    )}
+                    <p className="muted">{dev.title}</p>
+                    <p className="muted">{found ? "Аккаунт зарегистрирован" : "Ожидает регистрацию"}</p>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
@@ -1079,7 +1177,27 @@ function App() {
             <>
               <img className="player-cover" src={currentTrack.cover} alt={currentTrack.title} />
               <div className="player-meta">
-                <div className="player-title">{currentTrack.title}</div>
+                <div className="player-title-row">
+                  <div className="player-title">{currentTrack.title}</div>
+                  <button
+                    className="icon-btn like-btn like-btn-meta"
+                    type="button"
+                    title={currentTrack?.liked ? "Убрать лайк" : "Поставить лайк"}
+                    onMouseEnter={() => setLikeHover(true)}
+                    onMouseLeave={() => setLikeHover(false)}
+                    onClick={() => setCurrentTrackLiked(!currentTrack?.liked)}
+                  >
+                    <span className={`like-icon-layer ${!currentTrack?.liked && !likeHover ? "show" : ""}`}>
+                      <img className="icon-img" src={ICONS.likeOutline} alt="Не лайкнуто" />
+                    </span>
+                    <span className={`like-icon-layer ${((!currentTrack?.liked && likeHover) || (currentTrack?.liked && !likeHover)) ? "show" : ""}`}>
+                      <img className="icon-img" src={ICONS.likeFilled} alt="Лайкнуто" />
+                    </span>
+                    <span className={`like-icon-layer ${(currentTrack?.liked && likeHover) ? "show" : ""}`}>
+                      <img className="icon-img" src={ICONS.likeBroken} alt="Убрать лайк" />
+                    </span>
+                  </button>
+                </div>
                 <div className="muted">{currentTrack.artist}</div>
               </div>
             </>
@@ -1090,8 +1208,14 @@ function App() {
 
         <div className="player-center">
           <div className="controls centered-controls">
+            <button className="icon-btn track-nav-btn" onClick={playPrevTrack} title="Предыдущий трек">
+              <img className="icon-img nav-icon-img" src={ICONS.prev} alt="Предыдущий" />
+            </button>
             <button className="icon-btn play-btn" onClick={onPlayPause} title={isPlaying ? "Пауза" : "Пуск"}>
               <img className="icon-img play-icon-img" src={isPlaying ? ICONS.pause : ICONS.play} alt={isPlaying ? "Пауза" : "Пуск"} />
+            </button>
+            <button className="icon-btn track-nav-btn" onClick={playNextTrack} title="Следующий трек">
+              <img className="icon-img nav-icon-img" src={ICONS.next} alt="Следующий" />
             </button>
           </div>
           <div className="muted player-time-left">Осталось: {formatTime(Math.max(0, (duration || 0) - (progress || 0)))}</div>
@@ -1099,25 +1223,6 @@ function App() {
         </div>
 
         <div className="player-right">
-          <button
-            className="icon-btn like-btn"
-            type="button"
-            title={currentTrack?.liked ? "Убрать лайк" : "Поставить лайк"}
-            onMouseEnter={() => setLikeHover(true)}
-            onMouseLeave={() => setLikeHover(false)}
-            onClick={() => setCurrentTrackLiked(!currentTrack?.liked)}
-          >
-            <span className={`like-icon-layer ${!currentTrack?.liked && !likeHover ? "show" : ""}`}>
-              <img className="icon-img" src={ICONS.likeOutline} alt="Не лайкнуто" />
-            </span>
-            <span className={`like-icon-layer ${((!currentTrack?.liked && likeHover) || (currentTrack?.liked && !likeHover)) ? "show" : ""}`}>
-              <img className="icon-img" src={ICONS.likeFilled} alt="Лайкнуто" />
-            </span>
-            <span className={`like-icon-layer ${(currentTrack?.liked && likeHover) ? "show" : ""}`}>
-              <img className="icon-img" src={ICONS.likeBroken} alt="Убрать лайк" />
-            </span>
-          </button>
-
           <div className="volume-wrap" onMouseEnter={() => setVolumeOpen(true)} onMouseLeave={() => setVolumeOpen(false)}>
             <button className="icon-btn volume-btn" type="button" title="Громкость">
               <img className="icon-img" src={ICONS.volume} alt="Громкость" />
@@ -1231,6 +1336,7 @@ function App() {
 
         <audio
           ref={audioRef}
+          crossOrigin="anonymous"
           src={currentTrack?.audio || ""}
           onLoadedMetadata={(e) => {
             setDuration(e.currentTarget.duration || 0);
@@ -1248,6 +1354,17 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+
+
+
+
+
+
+
+
+
 
 
 
