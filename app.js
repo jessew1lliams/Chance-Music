@@ -1045,16 +1045,17 @@ function App() {
           </button>
         </div>
 
-        <button className={`sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : ""}`} type="button" onClick={() => setSidebarCollapsed((v) => !v)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}>
-          <img className="toggle-icon icon-left" src="./icons/nav/collapse_left.png" alt="" />
-          <img className="toggle-icon icon-right" src="./icons/nav/collapse_right.png" alt="" />
-        </button>
-
         <nav className="menu">
           <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}><img className="menu-icon" src="./icons/nav/nav_search.png" alt="" /><span>Поиск</span></button>
           <button className={`menu-btn ${activeView === "home" ? "active" : ""}`} onClick={() => { setActiveView("home"); setViewedProfileId(null); }}><img className="menu-icon" src="./icons/nav/nav_home.png" alt="" /><span>Главная</span></button>
           <button className={`menu-btn ${activeView === "collection" ? "active" : ""}`} onClick={() => setActiveView("collection")}><img className="menu-icon" src="./icons/nav/nav_connections.png" alt="" /><span>Подключения</span></button>
           <button className={`menu-btn ${activeView === "developers" ? "active" : ""}`} onClick={() => setActiveView("developers")}><img className="menu-icon" src="./icons/nav/nav_developers.png" alt="" /><span>Разработчики</span></button>
+          <div className="menu-toggle-row">
+            <button className={`sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : ""}`} type="button" onClick={() => setSidebarCollapsed((v) => !v)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}>
+              <img className="toggle-icon icon-left" src="./icons/nav/collapse_left.png" alt="" />
+              <img className="toggle-icon icon-right" src="./icons/nav/collapse_right.png" alt="" />
+            </button>
+          </div>
         </nav>
 
         <div className="user-box">
