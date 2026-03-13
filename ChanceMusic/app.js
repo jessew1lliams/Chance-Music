@@ -230,7 +230,7 @@ function App() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [editProfileMode, setEditProfileMode] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   const [currentTrackId, setCurrentTrackId] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -312,6 +312,13 @@ function App() {
     });
   }, []);
 
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSidebarCollapsed(false);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!session) localStorage.removeItem(AUTH_SESSION_KEY);
