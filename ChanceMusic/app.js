@@ -498,6 +498,12 @@ function App() {
   }, [activeView, viewedProfileId, users, currentUser, routeProfileSlug]);
 
   useEffect(() => {
+    if (!isJesseOwner && activeView === "collection") {
+      setActiveView("home");
+    }
+  }, [isJesseOwner, activeView]);
+
+  useEffect(() => {
     if (activeView !== "profile") return;
     if (!routeProfileSlug) {
       setViewedProfileId(null);
@@ -1543,7 +1549,6 @@ function App() {
         <nav className="menu">
           <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}><img className="menu-icon" src="./icons/nav/nav_search.png" alt="" /><span>Поиск</span></button>
           <button className={`menu-btn ${activeView === "home" ? "active" : ""}`} onClick={() => { setActiveView("home"); setViewedProfileId(null); }}><img className="menu-icon" src="./icons/nav/nav_home.png" alt="" /><span>Главная</span></button>
-          <button className={`menu-btn ${activeView === "collection" ? "active" : ""}`} onClick={() => setActiveView("collection")}><img className="menu-icon" src="./icons/nav/nav_connections.png" alt="" /><span>Подключения</span></button>
           <button className={`menu-btn ${activeView === "developers" ? "active" : ""}`} onClick={() => setActiveView("developers")}><img className="menu-icon" src="./icons/nav/nav_developers.png" alt="" /><span>Разработчики</span></button>
           <div className="menu-toggle-row">
             <button className={`sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : ""}`} type="button" onClick={() => setSidebarCollapsed((v) => !v)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}>
@@ -1700,6 +1705,13 @@ function App() {
           <section>
             <h2 className="section-title">ADMIN</h2>
             <p className="muted" style={{ marginBottom: 12 }}>Панель управления ролями и стилем ников.</p>
+            {isJesseOwner && (
+              <div className="card" style={{ marginBottom: 12 }}>
+                <h3 className="sub-title" style={{ marginTop: 0 }}>Подключения</h3>
+                <p className="muted">Управление Spotify/SoundCloud доступно только в личной админ-вкладке.</p>
+                <button className="small-btn" onClick={() => setActiveView("collection")}>Открыть подключения</button>
+              </div>
+            )}
             <div className="user-grid">
               {users.map((u) => (
                 <div className="card" key={u.id}>
@@ -1763,7 +1775,7 @@ function App() {
           </section>
         )}
 
-        {activeView === "collection" && (
+        {activeView === "collection" && isJesseOwner && (
           <section>
             <div className="row" style={{ marginBottom: 12 }}>
               <button className={`small-btn ${connectionTab === "spotify" ? "active" : ""}`} onClick={() => setConnectionTab("spotify")}>Spotify</button>
