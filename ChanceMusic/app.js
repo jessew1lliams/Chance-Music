@@ -13,6 +13,7 @@ const SPOTIFY_STATE_KEY = "chance_music_spotify_state_v1";
 const SUPABASE_SETTINGS_KEY = "chance_music_supabase_settings_v1";
 const SUPABASE_URL = "https://jazijcbkyrnqznqglzjp.supabase.co";
 const SUPABASE_ANON_KEY_DEFAULT = "sb_publishable_wD0EpFlPa6d6bxWBQvPFpg_fPreWwQo";
+const SUPABASE_PUBLIC_TRACKS_TABLE = "public_music_tracks";
 const SPOTIFY_SCOPES = [
   "user-read-private",
   "user-read-email",
@@ -200,6 +201,22 @@ function normalizeHandle(raw) {
   return cleaned;
 }
 
+function mapPublicRowToTrack(row, fallbackIdx = 0) {
+  const idCore = String(row?.provider_track_id || row?.id || `track_${fallbackIdx}`);
+  return {
+    id: `pub_${idCore}`,
+    title: String(row?.title || "Без названия"),
+    artist: String(row?.artist || "Unknown Artist"),
+    cover: row?.cover_url || "https://placehold.co/900x900/000/fff?text=Track",
+    audio: row?.audio_url || "",
+    releaseDate: "2026-03-01",
+    isUpcoming: false,
+    liked: false,
+    format: String(row?.format || "SOUNDCLOUD").toUpperCase(),
+    sourceUrl: row?.source_url || ""
+  };
+}
+
 function mergeUsersWithSupabase(localUsers, profiles) {
   const list = Array.isArray(localUsers) ? [...localUsers] : [];
   const byHandle = new Map(list.map((u, idx) => [normalizeHandle(u.handle || u.username), idx]));
@@ -358,6 +375,8 @@ function App() {
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(SUPABASE_ANON_KEY_DEFAULT);
   const [supabaseSyncing, setSupabaseSyncing] = useState(false);
   const [supabaseStatus, setSupabaseStatus] = useState("");
+  const [publicCatalogLoading, setPublicCatalogLoading] = useState(false);
+  const [publicCatalogStatus, setPublicCatalogStatus] = useState("");
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
@@ -382,6 +401,28 @@ function App() {
   const trackIndex = tracks.findIndex((t) => t.id === currentTrackId);
   const currentTrack = tracks[trackIndex] || tracks[0] || null;
   const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
+
+  const applyPublicCatalogTracks = (catalogTracks = [], silent = false) => {
+    if (!Array.isArray(catalogTracks) || !catalogTracks.length) return;
+    setData((prev) => {
+      const source = prev || normalizeAppData({});
+      const existingLiked = new Map((source.tracks || []).map((t) => [t.id, Boolean(t.liked)]));
+      const mergedTracks = catalogTracks.map((t) => ({ ...t, liked: existingLiked.get(t.id) || false }));
+      return {
+        ...source,
+        tracks: mergedTracks,
+        playlists: [{
+          id: "public-feed",
+          name: "Общий каталог",
+          cover: mergedTracks[0]?.cover || "https://placehold.co/900x900/000/fff?text=Music",
+          trackIds: mergedTracks.map((t) => t.id)
+        }],
+        user: { ...(source.user || {}), collectionTrackIds: mergedTracks.map((t) => t.id) }
+      };
+    });
+    setCurrentTrackId((prev) => prev || catalogTracks[0]?.id || null);
+    if (!silent) setPublicCatalogStatus(`Общий каталог обновлен: ${catalogTracks.length} трек(ов).`);
+  };
 
   useEffect(() => {
     const ok = safeSetLocalStorage(AUTH_USERS_KEY, JSON.stringify(users));
@@ -820,7 +861,9 @@ function App() {
     artist: t.user?.username || soundcloudUser?.username || "SoundCloud",
     artwork: t.artwork_url || t.user?.avatar_url || "https://placehold.co/600x600/000/fff?text=SoundCloud",
     link: t.permalink_url || t.uri,
-    durationMs: t.duration || 0
+    durationMs: t.duration || 0,
+    streamUrl: t.stream_url ? `${t.stream_url}${t.stream_url.includes("?") ? "&" : "?"}client_id=${encodeURIComponent(soundcloudClientId.trim())}` : "",
+    providerTrackId: t.id || t.urn || t.permalink_url
   }));
 
   const loadSoundcloudHome = async () => {
@@ -912,6 +955,88 @@ function App() {
     apikey: supabaseAnonKey.trim(),
     Authorization: `Bearer ${supabaseAnonKey.trim()}`,
     "Content-Type": "application/json"
+  };
+
+  const loadPublicCatalogFromSupabase = async (silent = false) => {
+    if (!supabaseEnabled) return;
+    if (!silent) setPublicCatalogLoading(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_PUBLIC_TRACKS_TABLE}?select=*&order=position.asc,created_at.asc`, {
+        headers: supabaseHeaders
+      });
+      const raw = await res.text();
+      let json = [];
+      try { json = raw ? JSON.parse(raw) : []; } catch { json = []; }
+      if (!res.ok) throw new Error(json?.message || raw || "Ошибка загрузки общего каталога");
+      const parsed = (Array.isArray(json) ? json : []).map((row, idx) => mapPublicRowToTrack(row, idx)).filter((t) => t.audio || t.sourceUrl);
+      if (parsed.length) applyPublicCatalogTracks(parsed, silent);
+      if (!silent) setPublicCatalogStatus(parsed.length ? `Загружено из Supabase: ${parsed.length} трек(ов).` : "Общий каталог пока пуст.");
+    } catch (err) {
+      if (!silent) setPublicCatalogStatus(`Каталог: ${err.message}`);
+    } finally {
+      if (!silent) setPublicCatalogLoading(false);
+    }
+  };
+
+  const publishSoundcloudToPublicCatalog = async () => {
+    if (!isJesseOwner) {
+      setSoundcloudError("Публикация в общий каталог доступна только jessew1lliams.");
+      return;
+    }
+    if (!supabaseEnabled) {
+      setSoundcloudError("Нужен Supabase ключ для публикации.");
+      return;
+    }
+    if (!soundcloudTracks.length) {
+      setSoundcloudError("Сначала открой плейлист SoundCloud с треками.");
+      return;
+    }
+    setPublicCatalogLoading(true);
+    setSoundcloudError("");
+    try {
+      const clearRes = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_PUBLIC_TRACKS_TABLE}?provider=eq.soundcloud`, {
+        method: "DELETE",
+        headers: { ...supabaseHeaders, Prefer: "return=minimal" }
+      });
+      if (!clearRes.ok && clearRes.status !== 404) {
+        const clearRaw = await clearRes.text();
+        throw new Error(`Не удалось очистить каталог: ${clearRaw || clearRes.status}`);
+      }
+
+      const payload = soundcloudTracks.map((t, idx) => ({
+        provider: "soundcloud",
+        provider_track_id: String(t.providerTrackId || t.id || idx),
+        title: String(t.title || "Без названия"),
+        artist: String(t.artist || "SoundCloud"),
+        cover_url: t.artwork || null,
+        audio_url: t.streamUrl || null,
+        source_url: t.link || null,
+        format: "SOUNDCLOUD",
+        duration_sec: Math.max(0, Math.floor((t.durationMs || 0) / 1000)),
+        position: idx,
+        published_by: normalizeHandle(currentUser?.handle || currentUser?.username || "jessew1lliams")
+      }));
+
+      const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_PUBLIC_TRACKS_TABLE}`, {
+        method: "POST",
+        headers: { ...supabaseHeaders, Prefer: "return=representation,resolution=merge-duplicates" },
+        body: JSON.stringify(payload)
+      });
+      const raw = await insertRes.text();
+      let json = [];
+      try { json = raw ? JSON.parse(raw) : []; } catch { json = []; }
+      if (!insertRes.ok) {
+        throw new Error(json?.message || raw || "Ошибка публикации каталога");
+      }
+      const parsed = (Array.isArray(json) ? json : payload).map((row, idx) => mapPublicRowToTrack(row, idx)).filter((t) => t.audio || t.sourceUrl);
+      if (parsed.length) applyPublicCatalogTracks(parsed);
+      setPublicCatalogStatus(`Опубликовано в общий каталог: ${payload.length} трек(ов).`);
+    } catch (err) {
+      setPublicCatalogStatus(`Каталог: ${err.message}`);
+      setSoundcloudError(`Публикация не удалась: ${err.message}`);
+    } finally {
+      setPublicCatalogLoading(false);
+    }
   };
 
   const toSupabasePayload = (u, schema = "new") => {
@@ -1038,6 +1163,21 @@ function App() {
     };
     run();
     const timer = setInterval(run, 25000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [supabaseAnonKey]);
+
+  useEffect(() => {
+    if (!supabaseEnabled) return;
+    let stopped = false;
+    const run = async () => {
+      await loadPublicCatalogFromSupabase(true);
+      if (stopped) return;
+    };
+    run();
+    const timer = setInterval(run, 30000);
     return () => {
       stopped = true;
       clearInterval(timer);
@@ -1372,14 +1512,24 @@ function App() {
 
   if (!data) return <div className="main">Загрузка...</div>;
 
-  const TrackCard = ({ track }) => (
-    <div className="card">
-      <img className="cover" src={track.cover} alt={track.title} />
-      <h3>{track.title}</h3>
-      <p className="muted">{track.artist}</p>
-      <button className="small-btn" onClick={() => playTrackById(track.id)}>Слушать</button>
-    </div>
-  );
+  const TrackCard = ({ track }) => {
+    const hasPlayableAudio = Boolean(track?.audio);
+    return (
+      <div className="card">
+        <img className="cover" src={track.cover} alt={track.title} />
+        <h3>{track.title}</h3>
+        <p className="muted">{track.artist}</p>
+        <div className="row">
+          <button className="small-btn" onClick={() => playTrackById(track.id)} disabled={!hasPlayableAudio} title={hasPlayableAudio ? "Слушать" : "У трека нет прямого аудиопотока"}>
+            Слушать
+          </button>
+          {!hasPlayableAudio && track?.sourceUrl && (
+            <a className="small-btn" href={track.sourceUrl} target="_blank" rel="noreferrer">Открыть</a>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -1708,12 +1858,15 @@ function App() {
                   <div className="row">
                     {!soundcloudConnected && <button className="small-btn" onClick={loadSoundcloudHome}>Подключить SoundCloud</button>}
                     {soundcloudConnected && <button className="small-btn" onClick={loadSoundcloudHome}>Обновить SoundCloud</button>}
+                    {soundcloudConnected && isJesseOwner && <button className="small-btn" onClick={publishSoundcloudToPublicCatalog}>Опубликовать на Главной</button>}
                     {soundcloudConnected && <button className="small-btn" onClick={soundcloudLogout}>Выйти из SoundCloud</button>}
                   </div>
 
                   {soundcloudUser && <p className="muted">Подключен аккаунт: {soundcloudUser.username || soundcloudUser.full_name || soundcloudUser.permalink}</p>}
                   {soundcloudError && <p className="spotify-error">{soundcloudError}</p>}
                   {soundcloudLoading && <p className="muted">Загрузка данных SoundCloud...</p>}
+                  {publicCatalogLoading && <p className="muted">Публикация/обновление общего каталога...</p>}
+                  {publicCatalogStatus && <p className="muted">{publicCatalogStatus}</p>}
                 </div>
 
                 <div className="card" style={{ marginTop: 12 }}>
