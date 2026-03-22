@@ -98,6 +98,15 @@ function getViewFromHash() {
   return ROUTE_TO_VIEW[raw] || "home";
 }
 
+function parseHashRoute() {
+  const raw = String(window.location.hash || "").replace(/^#\/?/, "").trim().toLowerCase();
+  const parts = raw.split("/").filter(Boolean);
+  const route = parts[0] || "main";
+  const view = ROUTE_TO_VIEW[route] || "home";
+  const profileSlug = view === "profile" ? normalizeHandle(decodeURIComponent(parts[1] || "")) : "";
+  return { view, profileSlug };
+}
+
 
 function formatTime(v) {
   if (!Number.isFinite(v)) return "0:00";
@@ -229,8 +238,9 @@ function Nick({ user }) {
 
 function App() {
   const [data, setData] = useState(null);
-  const [activeView, setActiveView] = useState(() => getViewFromHash());
+  const [activeView, setActiveView] = useState(() => parseHashRoute().view);
   const [viewedProfileId, setViewedProfileId] = useState(null);
+  const [routeProfileSlug, setRouteProfileSlug] = useState(() => parseHashRoute().profileSlug);
   const [query, setQuery] = useState("");
 
   const [users, setUsers] = useState(() => loadUsers());
@@ -352,9 +362,11 @@ function App() {
 
   useEffect(() => {
     const onHashChange = () => {
+      const parsed = parseHashRoute();
       hashSyncRef.current = true;
-      setActiveView(getViewFromHash());
-      setViewedProfileId(null);
+      setActiveView(parsed.view);
+      setRouteProfileSlug(parsed.profileSlug);
+      if (parsed.view !== "profile") setViewedProfileId(null);
       setEditProfileMode(false);
     };
     window.addEventListener("hashchange", onHashChange);
@@ -366,13 +378,32 @@ function App() {
 
   useEffect(() => {
     const route = VIEW_TO_ROUTE[activeView] || VIEW_TO_ROUTE.home;
-    const targetHash = `#/${route}`;
+    let targetHash = `#/${route}`;
+    if (activeView === "profile") {
+      const targetUser = users.find((u) => u.id === viewedProfileId) || currentUser || null;
+      const slug = normalizeHandle(targetUser?.handle || targetUser?.username || routeProfileSlug || "");
+      targetHash = slug ? `#/${route}/${slug}` : `#/${route}`;
+    }
     if (window.location.hash !== targetHash) {
       if (hashSyncRef.current) window.history.replaceState(null, "", targetHash);
       else window.history.pushState(null, "", targetHash);
     }
     hashSyncRef.current = false;
-  }, [activeView]);
+  }, [activeView, viewedProfileId, users, currentUser, routeProfileSlug]);
+
+  useEffect(() => {
+    if (activeView !== "profile") return;
+    if (!routeProfileSlug) {
+      setViewedProfileId(null);
+      return;
+    }
+    const found = users.find((u) =>
+      normalizeHandle(u.handle || u.username) === routeProfileSlug
+      || normalizeHandle(u.username) === routeProfileSlug
+    );
+    if (found) setViewedProfileId(found.id);
+    else setViewedProfileId(null);
+  }, [activeView, routeProfileSlug, users]);
 
   useEffect(() => {
     const savedSettings = localStorage.getItem(SPOTIFY_SETTINGS_KEY);
@@ -905,7 +936,9 @@ function App() {
   };
 
   const openProfile = (id) => {
+    const target = users.find((u) => u.id === id);
     setViewedProfileId(id);
+    setRouteProfileSlug(normalizeHandle(target?.handle || target?.username || ""));
     setActiveView("profile");
     setEditProfileMode(false);
     setProfileMenuOpen(false);
@@ -1119,7 +1152,7 @@ function App() {
           <p className="muted">Пользователь: <Nick user={currentUser} /></p>
         </div>
 
-        <button className={`menu-btn profile-nav ${activeView === "profile" ? "active" : ""}`} onClick={() => { setActiveView("profile"); setViewedProfileId(null); setEditProfileMode(false); }}><img className="menu-icon profile-user-icon" src="./icons/nav/nav_user.png" alt="" /><span>Профиль</span></button>
+        <button className={`menu-btn profile-nav ${activeView === "profile" ? "active" : ""}`} onClick={() => { setActiveView("profile"); setViewedProfileId(null); setRouteProfileSlug(normalizeHandle(currentUser?.handle || currentUser?.username || "")); setEditProfileMode(false); }}><img className="menu-icon profile-user-icon" src="./icons/nav/nav_user.png" alt="" /><span>Профиль</span></button>
       </aside>
 
       <main className="main">
