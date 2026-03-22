@@ -206,6 +206,11 @@ function mergeUsersWithSupabase(localUsers, profiles) {
   (Array.isArray(profiles) ? profiles : []).forEach((p) => {
     const handle = normalizeHandle(p?.handle || p?.username);
     if (!handle) return;
+    const nickStyleLegacy = typeof p?.nick_style === "string"
+      ? (() => { try { return JSON.parse(p.nick_style); } catch { return {}; } })()
+      : (p?.nick_style || {});
+    const color = p?.nick_color || nickStyleLegacy?.color || "#ffffff";
+    const glow = Boolean(p?.nick_glow ?? nickStyleLegacy?.glow);
     const mapped = {
       id: p?.id ? `sb_${String(p.id)}` : `sb_${handle}`,
       username: String(p?.username || handle),
@@ -213,13 +218,13 @@ function mergeUsersWithSupabase(localUsers, profiles) {
       email: "",
       password: "",
       role: p?.role || "user",
-      avatar: p?.avatar_url || "https://placehold.co/160x160/000/fff?text=Avatar",
-      banner: p?.banner_url || "https://placehold.co/1280x500/000/fff?text=Banner",
+      avatar: p?.avatar_url || p?.avatar || "https://placehold.co/160x160/000/fff?text=Avatar",
+      banner: p?.banner_url || p?.banner || "https://placehold.co/1280x500/000/fff?text=Banner",
       friends: [],
       nicknameChangedAt: 0,
       nickStyle: {
-        color: p?.nick_color || "#ffffff",
-        glow: Boolean(p?.nick_glow)
+        color,
+        glow
       }
     };
     if (byHandle.has(handle)) {
@@ -359,6 +364,7 @@ function App() {
   const eqGainRef = useRef(null);
   const playerMenuRef = useRef(null);
   const hashSyncRef = useRef(false);
+  const supabaseSchemaRef = useRef("auto");
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
   const profileUser = useMemo(() => {
@@ -904,11 +910,62 @@ function App() {
     "Content-Type": "application/json"
   };
 
+  const toSupabasePayload = (u, schema = "new") => {
+    const base = {
+      username: String(u.username || "").trim() || "user",
+      handle: normalizeHandle(u.handle || u.username || ""),
+      role: u.role || "user"
+    };
+    if (schema === "legacy") {
+      return {
+        ...base,
+        avatar: u.avatar || null,
+        banner: u.banner || null,
+        nick_style: { color: u.nickStyle?.color || "#ffffff", glow: Boolean(u.nickStyle?.glow) }
+      };
+    }
+    return {
+      ...base,
+      avatar_url: u.avatar || null,
+      banner_url: u.banner || null,
+      nick_color: u.nickStyle?.color || "#ffffff",
+      nick_glow: Boolean(u.nickStyle?.glow)
+    };
+  };
+
+  const upsertSupabaseProfiles = async (usersPayload, preferRepresentation = false) => {
+    const schemaOrder = supabaseSchemaRef.current === "legacy"
+      ? ["legacy", "new"]
+      : (supabaseSchemaRef.current === "new" ? ["new", "legacy"] : ["new", "legacy"]);
+    let lastError = null;
+    for (const schema of schemaOrder) {
+      const payload = usersPayload.map((u) => toSupabasePayload(u, schema)).filter((x) => x.handle);
+      if (!payload.length) return { ok: true, schema, json: [] };
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?on_conflict=handle`, {
+        method: "POST",
+        headers: {
+          ...supabaseHeaders,
+          Prefer: `resolution=merge-duplicates,return=${preferRepresentation ? "representation" : "minimal"}`
+        },
+        body: JSON.stringify(payload)
+      });
+      const raw = await res.text();
+      let json = [];
+      try { json = raw ? JSON.parse(raw) : []; } catch { json = []; }
+      if (res.ok) {
+        supabaseSchemaRef.current = schema;
+        return { ok: true, schema, json };
+      }
+      lastError = json?.message || json?.[0]?.message || raw || "Ошибка Supabase";
+    }
+    return { ok: false, error: lastError || "Ошибка Supabase" };
+  };
+
   const loadSupabaseProfiles = async () => {
     if (!supabaseEnabled) return;
     setSupabaseSyncing(true);
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,username,handle,role,avatar_url,banner_url,nick_color,nick_glow`, {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=*`, {
         headers: supabaseHeaders
       });
       const raw = await res.text();
@@ -917,6 +974,11 @@ function App() {
       if (!res.ok) {
         const msg = json?.message || raw || "Ошибка загрузки Supabase";
         throw new Error(msg);
+      }
+      if (Array.isArray(json) && json.length) {
+        const probe = json[0] || {};
+        if ("avatar_url" in probe || "nick_color" in probe) supabaseSchemaRef.current = "new";
+        else if ("avatar" in probe || "nick_style" in probe) supabaseSchemaRef.current = "legacy";
       }
       setUsers((prev) => mergeUsersWithSupabase(prev, json));
       setSupabaseStatus(`Supabase: загружено профилей ${Array.isArray(json) ? json.length : 0}`);
@@ -929,72 +991,31 @@ function App() {
 
   const syncUserToSupabase = async (user) => {
     if (!supabaseEnabled || !user) return;
-    const handle = normalizeHandle(user.handle || user.username);
-    if (!handle) return;
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles?on_conflict=handle`, {
-        method: "POST",
-        headers: {
-          ...supabaseHeaders,
-          Prefer: "resolution=merge-duplicates,return=minimal"
-        },
-        body: JSON.stringify([{
-          username: user.username,
-          handle,
-          role: user.role || "user",
-          avatar_url: user.avatar || null,
-          banner_url: user.banner || null,
-          nick_color: user.nickStyle?.color || "#ffffff",
-          nick_glow: Boolean(user.nickStyle?.glow)
-        }])
-      });
-    } catch {}
+    const result = await upsertSupabaseProfiles([user], false);
+    if (!result.ok) setSupabaseStatus(`Supabase: ${result.error}`);
   };
 
-  const syncAllUsersToSupabase = async () => {
+  const syncAllUsersToSupabase = async (silent = false) => {
     if (!supabaseEnabled) {
-      setSupabaseStatus("Supabase: вставь anon public key.");
+      if (!silent) setSupabaseStatus("Supabase: вставь anon public key.");
       return;
     }
     setSupabaseSyncing(true);
     try {
-      const payload = users
-        .filter(Boolean)
-        .map((u) => ({
-          username: String(u.username || "").trim() || "user",
-          handle: normalizeHandle(u.handle || u.username || ""),
-          role: u.role || "user",
-          avatar_url: u.avatar || null,
-          banner_url: u.banner || null,
-          nick_color: u.nickStyle?.color || "#ffffff",
-          nick_glow: Boolean(u.nickStyle?.glow)
-        }))
-        .filter((u) => u.handle);
+      const payload = users.filter(Boolean);
 
       if (!payload.length) {
-        setSupabaseStatus("Supabase: нет пользователей для выгрузки.");
+        if (!silent) setSupabaseStatus("Supabase: нет пользователей для выгрузки.");
         return;
       }
-
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?on_conflict=handle`, {
-        method: "POST",
-        headers: {
-          ...supabaseHeaders,
-          Prefer: "resolution=merge-duplicates,return=representation"
-        },
-        body: JSON.stringify(payload)
-      });
-      const raw = await res.text();
-      let json = [];
-      try { json = raw ? JSON.parse(raw) : []; } catch { json = []; }
-      if (!res.ok) {
-        const msg = json?.message || json?.[0]?.message || raw || "Ошибка выгрузки в Supabase";
-        throw new Error(msg);
+      const result = await upsertSupabaseProfiles(payload, true);
+      if (!result.ok) throw new Error(result.error);
+      if (Array.isArray(result.json) && result.json.length) {
+        setUsers((prev) => mergeUsersWithSupabase(prev, result.json));
       }
-      setUsers((prev) => mergeUsersWithSupabase(prev, json));
-      setSupabaseStatus(`Supabase: выгружено/обновлено профилей ${Array.isArray(json) ? json.length : payload.length}`);
+      if (!silent) setSupabaseStatus(`Supabase: выгружено/обновлено профилей ${Array.isArray(result.json) ? result.json.length : payload.length}`);
     } catch (err) {
-      setSupabaseStatus(`Supabase: ${err.message}`);
+      if (!silent) setSupabaseStatus(`Supabase: ${err.message}`);
     } finally {
       setSupabaseSyncing(false);
     }
@@ -1005,8 +1026,19 @@ function App() {
       setSupabaseStatus("Supabase: вставь anon public key для общего поиска пользователей.");
       return;
     }
-    loadSupabaseProfiles();
-  }, [supabaseAnonKey]);
+    let stopped = false;
+    const run = async () => {
+      await syncAllUsersToSupabase(true);
+      if (stopped) return;
+      await loadSupabaseProfiles();
+    };
+    run();
+    const timer = setInterval(run, 25000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [supabaseAnonKey, users.length]);
   const onAuthSubmit = (e) => {
     e.preventDefault();
     setAuthError("");
@@ -1518,23 +1550,6 @@ function App() {
 
         {activeView === "collection" && (
           <section>
-            <div className="card" style={{ marginBottom: 12 }}>
-              <h3 style={{ margin: 0 }}>Глобальные профили (Supabase)</h3>
-              <div className="row">
-                <input className="field" value={SUPABASE_URL} readOnly />
-                <input className="field" placeholder="Supabase anon public key" value={supabaseAnonKey} onChange={(e) => setSupabaseAnonKey(e.target.value.trim())} />
-              </div>
-              <div className="row">
-                <button className="small-btn" onClick={loadSupabaseProfiles} disabled={!supabaseEnabled || supabaseSyncing}>
-                  {supabaseSyncing ? "Синхронизация..." : "Синхронизировать профили"}
-                </button>
-                <button className="small-btn" onClick={syncAllUsersToSupabase} disabled={!supabaseEnabled || supabaseSyncing}>
-                  Выгрузить старых пользователей
-                </button>
-              </div>
-              <p className="muted">{supabaseStatus || "Supabase не подключен."}</p>
-            </div>
-
             <div className="row" style={{ marginBottom: 12 }}>
               <button className={`small-btn ${connectionTab === "spotify" ? "active" : ""}`} onClick={() => setConnectionTab("spotify")}>Spotify</button>
               <button className={`small-btn ${connectionTab === "soundcloud" ? "active" : ""}`} onClick={() => setConnectionTab("soundcloud")}>SoundCloud</button>
