@@ -111,6 +111,18 @@ function parseHashRoute() {
   return { view, profileSlug };
 }
 
+function detectMobileClient() {
+  try {
+    const ua = navigator.userAgent || "";
+    const byUa = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+    const byViewport = window.matchMedia("(max-width: 900px)").matches;
+    const byTouch = ("ontouchstart" in window) && window.innerWidth <= 1024;
+    return Boolean(byUa || byViewport || byTouch);
+  } catch {
+    return false;
+  }
+}
+
 
 function formatTime(v) {
   if (!Number.isFinite(v)) return "0:00";
@@ -332,6 +344,7 @@ function App() {
   const [editProfileMode, setEditProfileMode] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [isMobileClient, setIsMobileClient] = useState(() => detectMobileClient());
 
   const [currentTrackId, setCurrentTrackId] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -453,6 +466,20 @@ function App() {
       setSidebarCollapsed(false);
     }, 180);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const onViewportChange = () => setIsMobileClient(detectMobileClient());
+    const mq = window.matchMedia("(max-width: 900px)");
+    window.addEventListener("resize", onViewportChange);
+    if (mq.addEventListener) mq.addEventListener("change", onViewportChange);
+    else mq.addListener(onViewportChange);
+    onViewportChange();
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+      if (mq.removeEventListener) mq.removeEventListener("change", onViewportChange);
+      else mq.removeListener(onViewportChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -1538,7 +1565,7 @@ function App() {
   };
 
   return (
-    <div className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`app ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${isMobileClient ? "mobile-client" : ""}`}>
       <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
         <div className="sidebar-top">
           <button className="logo-link" onClick={() => { setActiveView("home"); setViewedProfileId(null); }} title="На главную">

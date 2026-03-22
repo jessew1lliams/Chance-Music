@@ -632,17 +632,26 @@ button, input, textarea, select { font: inherit; color: inherit; }
   top: 0;
   left: 0;
   right: 0;
-  height: 68px;
+  height: 116px;
   z-index: 45;
   border-right: 0;
   border-bottom: 1px solid #252525;
-  padding: 8px 10px;
-  display: flex;
+  padding: 8px 10px 6px;
+  display: grid;
+  grid-template-columns: 52px 1fr 44px;
+  grid-template-rows: 44px 44px;
+  grid-template-areas:
+    "logo spacer profile"
+    "menu menu menu";
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  overflow: visible;
 }
 .app.mobile-client .sidebar-top {
-  flex: 0 0 auto;
+  grid-area: logo;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
 }
 .app.mobile-client .logo-link,
 .app.mobile-client .logo-crop {
@@ -651,30 +660,25 @@ button, input, textarea, select { font: inherit; color: inherit; }
   height: 44px;
 }
 .app.mobile-client .logo {
-  width: 110px;
-  max-width: 110px;
+  width: 160px;
+  max-width: 160px;
 }
 .app.mobile-client .menu {
-  flex: 1;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
+  grid-area: menu;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-.app.mobile-client .menu::-webkit-scrollbar {
-  display: none;
+  width: 100%;
 }
 .app.mobile-client .sidebar .menu-btn {
   border: 1px solid #242424;
   border-radius: 10px;
   border-bottom: 1px solid #242424;
   padding: 8px 10px;
-  min-width: 42px;
+  min-width: 0;
+  width: 100%;
   justify-content: center;
-  flex: 0 0 auto;
+  align-items: center;
 }
 .app.mobile-client .sidebar .menu-btn > span {
   display: none;
@@ -684,17 +688,21 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: none;
 }
 .app.mobile-client .profile-nav {
+  grid-area: profile;
   margin: 0;
-  flex: 0 0 auto;
   width: 42px;
   min-width: 42px;
   padding: 8px 10px;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid #242424;
+  border-radius: 10px;
 }
 .app.mobile-client .profile-nav > span {
   display: none;
 }
 .app.mobile-client .main {
-  padding-top: 84px;
+  padding-top: 132px;
   padding-bottom: 250px;
 }
 .app.mobile-client .player {
