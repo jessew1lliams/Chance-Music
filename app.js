@@ -1052,16 +1052,21 @@ function App() {
     const password = authForm.password;
     if (authMode === "register") {
       if (!username || !handle || !email || !password) return setAuthError("Заполни все поля.");
-      const isDevPlaceholder = (u) => (u.id || "").startsWith("dev_") && !u.email && !u.password;
+      const isClaimablePlaceholder = (u) => {
+        if (!u) return false;
+        const hasNoCredentials = !u.email && !u.password;
+        const id = String(u.id || "");
+        return hasNoCredentials && (id.startsWith("dev_") || id.startsWith("sb_"));
+      };
       const existingByUsername = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
       const existingByHandle = users.find((u) => normalizeHandle(u.handle) === handle);
       const existingByEmail = users.find((u) => u.email === email);
-      if (existingByUsername && !isDevPlaceholder(existingByUsername)) return setAuthError("Такой ник уже занят.");
-      if (existingByHandle && !isDevPlaceholder(existingByHandle)) return setAuthError("Такой @id уже занят.");
+      if (existingByUsername && !isClaimablePlaceholder(existingByUsername)) return setAuthError("Такой ник уже занят.");
+      if (existingByHandle && !isClaimablePlaceholder(existingByHandle)) return setAuthError("Такой @id уже занят.");
       if (existingByEmail) return setAuthError("Пользователь с таким email уже существует.");
       const claimDevUser =
-        (existingByUsername && isDevPlaceholder(existingByUsername) ? existingByUsername : null) ||
-        (existingByHandle && isDevPlaceholder(existingByHandle) ? existingByHandle : null);
+        (existingByUsername && isClaimablePlaceholder(existingByUsername) ? existingByUsername : null) ||
+        (existingByHandle && isClaimablePlaceholder(existingByHandle) ? existingByHandle : null);
       let role = "user";
       if (normalizeHandle(username) === "horonsky" || handle === "horonsky") role = "admin";
       if (claimDevUser) {
