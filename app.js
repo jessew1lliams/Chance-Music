@@ -77,7 +77,6 @@ const DEV_USERS = [
     nickStyle: { color: "#ffffff", glow: false }
   }
 ];
-const REMOVED_HANDLES = new Set(["shqwed"]);
 
 const VIEW_TO_ROUTE = {
   home: "main",
@@ -156,7 +155,7 @@ function normalizeUsers(users) {
       color: u.nickStyle?.color || "#ffffff",
       glow: Boolean(u.nickStyle?.glow)
     }
-  })).filter((u) => !REMOVED_HANDLES.has(normalizeHandle(u.handle || u.username)));
+  }));
 }
 
 function withDevUsers(users) {
@@ -207,7 +206,6 @@ function mergeUsersWithSupabase(localUsers, profiles) {
   (Array.isArray(profiles) ? profiles : []).forEach((p) => {
     const handle = normalizeHandle(p?.handle || p?.username);
     if (!handle) return;
-    if (REMOVED_HANDLES.has(handle)) return;
     const nickStyleLegacy = typeof p?.nick_style === "string"
       ? (() => { try { return JSON.parse(p.nick_style); } catch { return {}; } })()
       : (p?.nick_style || {});
