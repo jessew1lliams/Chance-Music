@@ -951,6 +951,55 @@ function App() {
     } catch {}
   };
 
+  const syncAllUsersToSupabase = async () => {
+    if (!supabaseEnabled) {
+      setSupabaseStatus("Supabase: вставь anon public key.");
+      return;
+    }
+    setSupabaseSyncing(true);
+    try {
+      const payload = users
+        .filter(Boolean)
+        .map((u) => ({
+          username: String(u.username || "").trim() || "user",
+          handle: normalizeHandle(u.handle || u.username || ""),
+          role: u.role || "user",
+          avatar_url: u.avatar || null,
+          banner_url: u.banner || null,
+          nick_color: u.nickStyle?.color || "#ffffff",
+          nick_glow: Boolean(u.nickStyle?.glow)
+        }))
+        .filter((u) => u.handle);
+
+      if (!payload.length) {
+        setSupabaseStatus("Supabase: нет пользователей для выгрузки.");
+        return;
+      }
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?on_conflict=handle`, {
+        method: "POST",
+        headers: {
+          ...supabaseHeaders,
+          Prefer: "resolution=merge-duplicates,return=representation"
+        },
+        body: JSON.stringify(payload)
+      });
+      const raw = await res.text();
+      let json = [];
+      try { json = raw ? JSON.parse(raw) : []; } catch { json = []; }
+      if (!res.ok) {
+        const msg = json?.message || json?.[0]?.message || raw || "Ошибка выгрузки в Supabase";
+        throw new Error(msg);
+      }
+      setUsers((prev) => mergeUsersWithSupabase(prev, json));
+      setSupabaseStatus(`Supabase: выгружено/обновлено профилей ${Array.isArray(json) ? json.length : payload.length}`);
+    } catch (err) {
+      setSupabaseStatus(`Supabase: ${err.message}`);
+    } finally {
+      setSupabaseSyncing(false);
+    }
+  };
+
   useEffect(() => {
     if (!supabaseEnabled) {
       setSupabaseStatus("Supabase: вставь anon public key для общего поиска пользователей.");
@@ -1478,6 +1527,9 @@ function App() {
               <div className="row">
                 <button className="small-btn" onClick={loadSupabaseProfiles} disabled={!supabaseEnabled || supabaseSyncing}>
                   {supabaseSyncing ? "Синхронизация..." : "Синхронизировать профили"}
+                </button>
+                <button className="small-btn" onClick={syncAllUsersToSupabase} disabled={!supabaseEnabled || supabaseSyncing}>
+                  Выгрузить старых пользователей
                 </button>
               </div>
               <p className="muted">{supabaseStatus || "Supabase не подключен."}</p>
