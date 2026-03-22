@@ -23,6 +23,7 @@ const SPOTIFY_SCOPES = [
 
 const SOUNDCLOUD_SETTINGS_KEY = "chance_music_soundcloud_settings_v1";
 const SOUNDCLOUD_AUTH_KEY = "chance_music_soundcloud_auth_v1";
+const YANDEX_SETTINGS_KEY = "chance_music_yandex_settings_v1";
 
 const SAMPLE_TRACK = {
   id: "demo-track-1",
@@ -384,6 +385,16 @@ function App() {
   const [soundcloudTracks, setSoundcloudTracks] = useState([]);
   const [soundcloudLoading, setSoundcloudLoading] = useState(false);
   const [soundcloudError, setSoundcloudError] = useState("");
+  const [yandexTracks, setYandexTracks] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(YANDEX_SETTINGS_KEY) || "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch {
+      return [];
+    }
+  });
+  const [yandexDraft, setYandexDraft] = useState({ title: "", artist: "", url: "" });
+  const [yandexError, setYandexError] = useState("");
 
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(SUPABASE_ANON_KEY_DEFAULT);
   const [supabaseSyncing, setSupabaseSyncing] = useState(false);
@@ -598,6 +609,9 @@ function App() {
       connected: soundcloudConnected
     }));
   }, [soundcloudClientId, soundcloudProfileUrl, soundcloudConnected]);
+  useEffect(() => {
+    safeSetLocalStorage(YANDEX_SETTINGS_KEY, JSON.stringify(yandexTracks || []));
+  }, [yandexTracks]);
 
   useEffect(() => {
     safeSetLocalStorage(SUPABASE_SETTINGS_KEY, JSON.stringify({
@@ -1067,6 +1081,85 @@ function App() {
     } catch (err) {
       setPublicCatalogStatus(`Каталог: ${err.message}`);
       setSoundcloudError(`Публикация не удалась: ${err.message}`);
+    } finally {
+      setPublicCatalogLoading(false);
+    }
+  };
+
+  const addYandexTrack = () => {
+    const title = String(yandexDraft.title || "").trim();
+    const artist = String(yandexDraft.artist || "").trim();
+    const url = String(yandexDraft.url || "").trim();
+    if (!title || !artist || !url) {
+      setYandexError("Заполни название, артиста и ссылку Яндекс Музыки.");
+      return;
+    }
+    if (!/^https?:\/\/music\.yandex\./i.test(url) && !/^https?:\/\/(ya\.ru|yandex\.)/i.test(url)) {
+      setYandexError("Вставь ссылку вида https://music.yandex.ru/...");
+      return;
+    }
+    const id = `ym_${Date.now()}`;
+    setYandexTracks((prev) => [...prev, { id, title, artist, url }]);
+    setYandexDraft({ title: "", artist: "", url: "" });
+    setYandexError("");
+  };
+
+  const removeYandexTrack = (id) => {
+    setYandexTracks((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const publishYandexToPublicCatalog = async () => {
+    if (!isJesseOwner) {
+      setYandexError("Публикация доступна только jessew1lliams.");
+      return;
+    }
+    if (!supabaseEnabled) {
+      setYandexError("Нужен Supabase ключ для публикации.");
+      return;
+    }
+    if (!yandexTracks.length) {
+      setYandexError("Добавь хотя бы один трек.");
+      return;
+    }
+    setPublicCatalogLoading(true);
+    setYandexError("");
+    try {
+      const clearRes = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_PUBLIC_TRACKS_TABLE}?provider=eq.yandex_music`, {
+        method: "DELETE",
+        headers: { ...supabaseHeaders, Prefer: "return=minimal" }
+      });
+      if (!clearRes.ok && clearRes.status !== 404) {
+        const clearRaw = await clearRes.text();
+        throw new Error(`Не удалось очистить каталог Яндекса: ${clearRaw || clearRes.status}`);
+      }
+
+      const payload = yandexTracks.map((t, idx) => ({
+        provider: "yandex_music",
+        provider_track_id: String(t.id || idx),
+        title: String(t.title || "Без названия"),
+        artist: String(t.artist || "Unknown Artist"),
+        cover_url: null,
+        audio_url: null,
+        source_url: t.url,
+        format: "YANDEX",
+        duration_sec: 0,
+        position: idx,
+        published_by: normalizeHandle(currentUser?.handle || currentUser?.username || "jessew1lliams")
+      }));
+      const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_PUBLIC_TRACKS_TABLE}`, {
+        method: "POST",
+        headers: { ...supabaseHeaders, Prefer: "return=representation,resolution=merge-duplicates" },
+        body: JSON.stringify(payload)
+      });
+      const raw = await insertRes.text();
+      let json = [];
+      try { json = raw ? JSON.parse(raw) : []; } catch { json = []; }
+      if (!insertRes.ok) throw new Error(json?.message || raw || "Ошибка публикации Яндекс каталога");
+      const parsed = (Array.isArray(json) ? json : payload).map((row, idx) => mapPublicRowToTrack(row, idx)).filter((t) => t.audio || t.sourceUrl);
+      if (parsed.length) applyPublicCatalogTracks(parsed);
+      setPublicCatalogStatus(`Опубликовано из Яндекс Музыки: ${payload.length} трек(ов).`);
+    } catch (err) {
+      setYandexError(String(err.message || err));
     } finally {
       setPublicCatalogLoading(false);
     }
@@ -1807,6 +1900,7 @@ function App() {
             <div className="row" style={{ marginBottom: 12 }}>
               <button className={`small-btn ${connectionTab === "spotify" ? "active" : ""}`} onClick={() => setConnectionTab("spotify")}>Spotify</button>
               <button className={`small-btn ${connectionTab === "soundcloud" ? "active" : ""}`} onClick={() => setConnectionTab("soundcloud")}>SoundCloud</button>
+              <button className={`small-btn ${connectionTab === "yandex" ? "active" : ""}`} onClick={() => setConnectionTab("yandex")}>Яндекс Музыка</button>
             </div>
 
             {connectionTab === "spotify" && (
@@ -1956,6 +2050,61 @@ function App() {
                     )}
                   </div>
                 )}
+              </>
+            )}
+
+            {connectionTab === "yandex" && (
+              <>
+                <h2 className="section-title">Яндекс Музыка</h2>
+                <div className="card">
+                  <p className="muted">
+                    Авто-API для Яндекс Музыки ограничен, поэтому здесь ручная публикация треков/ссылок в общий каталог.
+                  </p>
+                  <div className="row">
+                    <input
+                      className="field"
+                      placeholder="Название трека"
+                      value={yandexDraft.title}
+                      onChange={(e) => setYandexDraft((d) => ({ ...d, title: e.target.value }))}
+                    />
+                    <input
+                      className="field"
+                      placeholder="Артист"
+                      value={yandexDraft.artist}
+                      onChange={(e) => setYandexDraft((d) => ({ ...d, artist: e.target.value }))}
+                    />
+                  </div>
+                  <input
+                    className="field"
+                    placeholder="Ссылка на трек/альбом/плейлист Яндекс Музыки"
+                    value={yandexDraft.url}
+                    onChange={(e) => setYandexDraft((d) => ({ ...d, url: e.target.value }))}
+                  />
+                  <div className="row">
+                    <button className="small-btn" onClick={addYandexTrack}>Добавить</button>
+                    {isJesseOwner && <button className="small-btn" onClick={publishYandexToPublicCatalog}>Опубликовать на Главной</button>}
+                  </div>
+                  {yandexError && <p className="spotify-error">{yandexError}</p>}
+                  {publicCatalogLoading && <p className="muted">Публикация каталога...</p>}
+                  {publicCatalogStatus && <p className="muted">{publicCatalogStatus}</p>}
+                </div>
+
+                <div className="card" style={{ marginTop: 12 }}>
+                  <h3 style={{ marginTop: 0 }}>Список Яндекс треков</h3>
+                  {!yandexTracks.length && <p className="muted">Пока пусто. Добавь первый трек.</p>}
+                  {yandexTracks.map((t) => (
+                    <div key={t.id} className="playlist-track-row">
+                      <div>
+                        <div>{t.title}</div>
+                        <div className="muted">{t.artist}</div>
+                      </div>
+                      <div className="row">
+                        <a className="small-btn" href={t.url} target="_blank" rel="noreferrer">Открыть</a>
+                        <button className="small-btn" onClick={() => removeYandexTrack(t.id)}>Удалить</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </>
             )}
           </section>
