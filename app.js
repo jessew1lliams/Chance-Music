@@ -10,6 +10,8 @@ const SPOTIFY_SETTINGS_KEY = "chance_music_spotify_settings_v1";
 const SPOTIFY_AUTH_KEY = "chance_music_spotify_auth_v1";
 const SPOTIFY_VERIFIER_KEY = "chance_music_spotify_verifier_v1";
 const SPOTIFY_STATE_KEY = "chance_music_spotify_state_v1";
+const SUPABASE_SETTINGS_KEY = "chance_music_supabase_settings_v1";
+const SUPABASE_URL = "https://jazijcbkyrnqznqglzjp.supabase.co";
 const SPOTIFY_SCOPES = [
   "user-read-private",
   "user-read-email",
@@ -197,6 +199,48 @@ function normalizeHandle(raw) {
   return cleaned;
 }
 
+function mergeUsersWithSupabase(localUsers, profiles) {
+  const list = Array.isArray(localUsers) ? [...localUsers] : [];
+  const byHandle = new Map(list.map((u, idx) => [normalizeHandle(u.handle || u.username), idx]));
+  (Array.isArray(profiles) ? profiles : []).forEach((p) => {
+    const handle = normalizeHandle(p?.handle || p?.username);
+    if (!handle) return;
+    const mapped = {
+      id: p?.id ? `sb_${String(p.id)}` : `sb_${handle}`,
+      username: String(p?.username || handle),
+      handle,
+      email: "",
+      password: "",
+      role: p?.role || "user",
+      avatar: p?.avatar_url || "https://placehold.co/160x160/000/fff?text=Avatar",
+      banner: p?.banner_url || "https://placehold.co/1280x500/000/fff?text=Banner",
+      friends: [],
+      nicknameChangedAt: 0,
+      nickStyle: {
+        color: p?.nick_color || "#ffffff",
+        glow: Boolean(p?.nick_glow)
+      }
+    };
+    if (byHandle.has(handle)) {
+      const idx = byHandle.get(handle);
+      const existing = list[idx];
+      list[idx] = {
+        ...existing,
+        username: mapped.username || existing.username,
+        handle: mapped.handle || existing.handle,
+        role: mapped.role || existing.role,
+        avatar: mapped.avatar || existing.avatar,
+        banner: mapped.banner || existing.banner,
+        nickStyle: mapped.nickStyle || existing.nickStyle
+      };
+    } else {
+      byHandle.set(handle, list.length);
+      list.push(mapped);
+    }
+  });
+  return withDevUsers(list);
+}
+
 function isJesseAccount(user) {
   const uname = String(user?.username || "").toLowerCase();
   const handle = normalizeHandle(user?.handle);
@@ -304,6 +348,10 @@ function App() {
   const [soundcloudTracks, setSoundcloudTracks] = useState([]);
   const [soundcloudLoading, setSoundcloudLoading] = useState(false);
   const [soundcloudError, setSoundcloudError] = useState("");
+
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState("");
+  const [supabaseSyncing, setSupabaseSyncing] = useState(false);
+  const [supabaseStatus, setSupabaseStatus] = useState("");
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
@@ -380,8 +428,14 @@ function App() {
     const route = VIEW_TO_ROUTE[activeView] || VIEW_TO_ROUTE.home;
     let targetHash = `#/${route}`;
     if (activeView === "profile") {
-      const targetUser = users.find((u) => u.id === viewedProfileId) || currentUser || null;
-      const slug = normalizeHandle(targetUser?.handle || targetUser?.username || routeProfileSlug || "");
+      const targetUser = users.find((u) => u.id === viewedProfileId) || null;
+      const slug = normalizeHandle(
+        targetUser?.handle
+        || targetUser?.username
+        || routeProfileSlug
+        || (!viewedProfileId ? (currentUser?.handle || currentUser?.username) : "")
+        || ""
+      );
       targetHash = slug ? `#/${route}/${slug}` : `#/${route}`;
     }
     if (window.location.hash !== targetHash) {
@@ -438,6 +492,14 @@ function App() {
         if (p?.id) setSoundcloudUser(p);
       } catch {}
     }
+
+    const savedSupabase = localStorage.getItem(SUPABASE_SETTINGS_KEY);
+    if (savedSupabase) {
+      try {
+        const p = JSON.parse(savedSupabase);
+        if (p?.anonKey) setSupabaseAnonKey(p.anonKey);
+      } catch {}
+    }
   }, []);
 
   useEffect(() => {
@@ -451,6 +513,13 @@ function App() {
       connected: soundcloudConnected
     }));
   }, [soundcloudClientId, soundcloudProfileUrl, soundcloudConnected]);
+
+  useEffect(() => {
+    safeSetLocalStorage(SUPABASE_SETTINGS_KEY, JSON.stringify({
+      url: SUPABASE_URL,
+      anonKey: supabaseAnonKey.trim()
+    }));
+  }, [supabaseAnonKey]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -825,6 +894,69 @@ function App() {
     setSoundcloudError("");
     localStorage.removeItem(SOUNDCLOUD_AUTH_KEY);
   };
+
+  const supabaseEnabled = Boolean(supabaseAnonKey.trim());
+
+  const supabaseHeaders = {
+    apikey: supabaseAnonKey.trim(),
+    Authorization: `Bearer ${supabaseAnonKey.trim()}`,
+    "Content-Type": "application/json"
+  };
+
+  const loadSupabaseProfiles = async () => {
+    if (!supabaseEnabled) return;
+    setSupabaseSyncing(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/profiles?select=id,username,handle,role,avatar_url,banner_url,nick_color,nick_glow`, {
+        headers: supabaseHeaders
+      });
+      const raw = await res.text();
+      let json = [];
+      try { json = raw ? JSON.parse(raw) : []; } catch { json = []; }
+      if (!res.ok) {
+        const msg = json?.message || raw || "Ошибка загрузки Supabase";
+        throw new Error(msg);
+      }
+      setUsers((prev) => mergeUsersWithSupabase(prev, json));
+      setSupabaseStatus(`Supabase: загружено профилей ${Array.isArray(json) ? json.length : 0}`);
+    } catch (err) {
+      setSupabaseStatus(`Supabase: ${err.message}`);
+    } finally {
+      setSupabaseSyncing(false);
+    }
+  };
+
+  const syncUserToSupabase = async (user) => {
+    if (!supabaseEnabled || !user) return;
+    const handle = normalizeHandle(user.handle || user.username);
+    if (!handle) return;
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles?on_conflict=handle`, {
+        method: "POST",
+        headers: {
+          ...supabaseHeaders,
+          Prefer: "resolution=merge-duplicates,return=minimal"
+        },
+        body: JSON.stringify([{
+          username: user.username,
+          handle,
+          role: user.role || "user",
+          avatar_url: user.avatar || null,
+          banner_url: user.banner || null,
+          nick_color: user.nickStyle?.color || "#ffffff",
+          nick_glow: Boolean(user.nickStyle?.glow)
+        }])
+      });
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!supabaseEnabled) {
+      setSupabaseStatus("Supabase: вставь anon public key для общего поиска пользователей.");
+      return;
+    }
+    loadSupabaseProfiles();
+  }, [supabaseAnonKey]);
   const onAuthSubmit = (e) => {
     e.preventDefault();
     setAuthError("");
@@ -857,6 +989,7 @@ function App() {
         };
         setUsers((prev) => prev.map((u) => (u.id === claimDevUser.id ? claimed : u)));
         setSession({ userId: claimed.id });
+        syncUserToSupabase(claimed);
       } else {
         const user = {
           id: `u_${Date.now()}`,
@@ -873,6 +1006,7 @@ function App() {
         };
         setUsers((prev) => [...prev, user]);
         setSession({ userId: user.id });
+        syncUserToSupabase(user);
       }
       setAuthForm({ username: "", handle: "", email: "", password: "" });
       return;
@@ -902,7 +1036,13 @@ function App() {
 
   const updateCurrentUser = (patch) => {
     if (!currentUser) return;
-    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? { ...u, ...patch } : u)));
+    let updated = null;
+    setUsers((prev) => prev.map((u) => {
+      if (u.id !== currentUser.id) return u;
+      updated = { ...u, ...patch };
+      return updated;
+    }));
+    if (updated) syncUserToSupabase(updated);
   };
 
   const setRole = (id, role) => {
@@ -918,11 +1058,13 @@ function App() {
     if (!currentUser) return;
     const privileged = currentUser.role === "admin" || currentUser.role === "moderator" || isDeveloperAccount(currentUser);
     if (!privileged) return;
+    const updated = { ...currentUser, nickStyle: { ...(currentUser.nickStyle || {}), ...patch } };
     setUsers((prev) => prev.map((u) => (
       u.id === currentUser.id
         ? { ...u, nickStyle: { ...(u.nickStyle || {}), ...patch } }
         : u
     )));
+    syncUserToSupabase(updated);
   };
 
   const addFriend = (targetId) => {
@@ -998,7 +1140,11 @@ function App() {
   const filteredUsers = useMemo(() => {
     const t = query.trim().toLowerCase();
     if (!t) return [];
-    return users.filter((u) => u.username.toLowerCase().includes(t));
+    return users.filter((u) => {
+      const uname = String(u.username || "").toLowerCase();
+      const handle = normalizeHandle(u.handle || u.username);
+      return uname.includes(t) || handle.includes(normalizeHandle(t));
+    });
   }, [users, query]);
 
   const myFriends = useMemo(() => users.filter((u) => currentUser?.friends.includes(u.id)), [users, currentUser]);
@@ -1322,6 +1468,20 @@ function App() {
 
         {activeView === "collection" && (
           <section>
+            <div className="card" style={{ marginBottom: 12 }}>
+              <h3 style={{ margin: 0 }}>Глобальные профили (Supabase)</h3>
+              <div className="row">
+                <input className="field" value={SUPABASE_URL} readOnly />
+                <input className="field" placeholder="Supabase anon public key" value={supabaseAnonKey} onChange={(e) => setSupabaseAnonKey(e.target.value.trim())} />
+              </div>
+              <div className="row">
+                <button className="small-btn" onClick={loadSupabaseProfiles} disabled={!supabaseEnabled || supabaseSyncing}>
+                  {supabaseSyncing ? "Синхронизация..." : "Синхронизировать профили"}
+                </button>
+              </div>
+              <p className="muted">{supabaseStatus || "Supabase не подключен."}</p>
+            </div>
+
             <div className="row" style={{ marginBottom: 12 }}>
               <button className={`small-btn ${connectionTab === "spotify" ? "active" : ""}`} onClick={() => setConnectionTab("spotify")}>Spotify</button>
               <button className={`small-btn ${connectionTab === "soundcloud" ? "active" : ""}`} onClick={() => setConnectionTab("soundcloud")}>SoundCloud</button>
