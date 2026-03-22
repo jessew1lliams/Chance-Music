@@ -418,6 +418,7 @@ function App() {
   const eqFiltersRef = useRef([]);
   const eqGainRef = useRef(null);
   const playerMenuRef = useRef(null);
+  const volumeHideTimerRef = useRef(null);
   const hashSyncRef = useRef(false);
   const supabaseSchemaRef = useRef("auto");
   const usersRef = useRef(users);
@@ -804,6 +805,24 @@ function App() {
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [playerMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (volumeHideTimerRef.current) clearTimeout(volumeHideTimerRef.current);
+    };
+  }, []);
+
+  const onVolumeHoverStart = () => {
+    if (volumeHideTimerRef.current) clearTimeout(volumeHideTimerRef.current);
+    setVolumeOpen(true);
+  };
+
+  const onVolumeHoverEnd = () => {
+    if (volumeHideTimerRef.current) clearTimeout(volumeHideTimerRef.current);
+    volumeHideTimerRef.current = setTimeout(() => {
+      setVolumeOpen(false);
+    }, 220);
+  };
   const spotifyApi = async (path) => {
     if (!spotifyToken?.accessToken) throw new Error("Нет токена Spotify");
     const res = await fetch(`https://api.spotify.com/v1${path}`, { headers: { Authorization: `Bearer ${spotifyToken.accessToken}` } });
@@ -2242,11 +2261,15 @@ function App() {
         </div>
 
         <div className="player-right">
-          <div className="volume-wrap" onMouseEnter={() => setVolumeOpen(true)} onMouseLeave={() => setVolumeOpen(false)}>
+          <div className="volume-wrap" onMouseEnter={onVolumeHoverStart} onMouseLeave={onVolumeHoverEnd}>
             <button className="icon-btn volume-btn" type="button" title="Громкость">
               <img className="icon-img" src={ICONS.volume} alt="Громкость" />
             </button>
-            <div className={`volume-pop ${volumeOpen ? "open" : ""}`}>
+            <div
+              className={`volume-pop ${volumeOpen ? "open" : ""}`}
+              onMouseEnter={onVolumeHoverStart}
+              onMouseLeave={onVolumeHoverEnd}
+            >
               <input
                 className="volume-slider"
                 type="range"
