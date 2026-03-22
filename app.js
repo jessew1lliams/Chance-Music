@@ -12,6 +12,7 @@ const SPOTIFY_VERIFIER_KEY = "chance_music_spotify_verifier_v1";
 const SPOTIFY_STATE_KEY = "chance_music_spotify_state_v1";
 const SUPABASE_SETTINGS_KEY = "chance_music_supabase_settings_v1";
 const SUPABASE_URL = "https://jazijcbkyrnqznqglzjp.supabase.co";
+const SUPABASE_ANON_KEY_DEFAULT = "sb_publishable_wD0EpFlPa6d6bxWBQvPFpg_fPreWwQo";
 const SPOTIFY_SCOPES = [
   "user-read-private",
   "user-read-email",
@@ -349,7 +350,7 @@ function App() {
   const [soundcloudLoading, setSoundcloudLoading] = useState(false);
   const [soundcloudError, setSoundcloudError] = useState("");
 
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState("");
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(SUPABASE_ANON_KEY_DEFAULT);
   const [supabaseSyncing, setSupabaseSyncing] = useState(false);
   const [supabaseStatus, setSupabaseStatus] = useState("");
   const audioRef = useRef(null);
