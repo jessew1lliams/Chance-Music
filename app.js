@@ -394,6 +394,7 @@ function App() {
     }
   });
   const [yandexDraft, setYandexDraft] = useState({ title: "", artist: "", url: "" });
+  const [yandexBulkText, setYandexBulkText] = useState("");
   const [yandexError, setYandexError] = useState("");
 
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(SUPABASE_ANON_KEY_DEFAULT);
@@ -1106,6 +1107,36 @@ function App() {
 
   const removeYandexTrack = (id) => {
     setYandexTracks((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const addYandexTracksBulk = () => {
+    const text = String(yandexBulkText || "").trim();
+    if (!text) {
+      setYandexError("Вставь список треков для пакетного импорта.");
+      return;
+    }
+    const lines = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    const parsed = [];
+    lines.forEach((line, idx) => {
+      const parts = line.split("|").map((x) => x.trim());
+      if (parts.length < 3) return;
+      const [title, artist, url] = parts;
+      if (!title || !artist || !url) return;
+      if (!/^https?:\/\/music\.yandex\./i.test(url) && !/^https?:\/\/(ya\.ru|yandex\.)/i.test(url)) return;
+      parsed.push({
+        id: `ym_${Date.now()}_${idx}`,
+        title,
+        artist,
+        url
+      });
+    });
+    if (!parsed.length) {
+      setYandexError("Формат строк: Название | Артист | https://music.yandex.ru/...");
+      return;
+    }
+    setYandexTracks((prev) => [...prev, ...parsed]);
+    setYandexBulkText("");
+    setYandexError("");
   };
 
   const publishYandexToPublicCatalog = async () => {
@@ -2082,8 +2113,16 @@ function App() {
                   />
                   <div className="row">
                     <button className="small-btn" onClick={addYandexTrack}>Добавить</button>
+                    <button className="small-btn" onClick={addYandexTracksBulk}>Импорт списком</button>
                     {isJesseOwner && <button className="small-btn" onClick={publishYandexToPublicCatalog}>Опубликовать на Главной</button>}
                   </div>
+                  <textarea
+                    className="field"
+                    rows={5}
+                    placeholder={"Пакетный импорт (каждая строка):\nНазвание | Артист | https://music.yandex.ru/..."}
+                    value={yandexBulkText}
+                    onChange={(e) => setYandexBulkText(e.target.value)}
+                  />
                   {yandexError && <p className="spotify-error">{yandexError}</p>}
                   {publicCatalogLoading && <p className="muted">Публикация каталога...</p>}
                   {publicCatalogStatus && <p className="muted">{publicCatalogStatus}</p>}
