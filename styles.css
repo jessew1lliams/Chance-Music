@@ -200,7 +200,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   position: absolute;
   left: 0;
   right: 0;
-  top: -1px;
+  top: -2px;
+  z-index: 2;
   opacity: 0.22;
   transition: opacity 0.2s ease;
 }
@@ -275,10 +276,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .volume-btn { min-width: 36px; min-height: 36px; opacity: 0.96; }
 .volume-pop {
   position: absolute;
-  right: 8px;
+  right: 4px;
   bottom: 42px;
-  width: 18px;
-  height: 88px;
+  width: 24px;
+  height: 96px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -292,18 +293,18 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .volume-pop.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
 .volume-slider {
-  width: 18px;
-  height: 88px;
-  writing-mode: bt-lr;
-  -webkit-appearance: slider-vertical;
-  appearance: slider-vertical;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 72px;
+  height: 4px;
   background: transparent;
-  transform: none;
+  transform: rotate(-90deg);
+  transform-origin: center;
   margin: 0;
   border: 0;
   outline: none;
 }
-.volume-slider::-webkit-slider-runnable-track { width: 4px; border-radius: 999px; background: #4c4c4c; border: 0; }
+.volume-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: #4c4c4c; border: 0; }
 .volume-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -311,10 +312,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   height: 10px;
   border-radius: 50%;
   background: #fff;
-  margin-top: 0;
+  margin-top: -3px;
   border: 0;
 }
-.volume-slider::-moz-range-track { width: 4px; border-radius: 999px; background: #4c4c4c; border: 0; }
+.volume-slider::-moz-range-track { height: 4px; border-radius: 999px; background: #4c4c4c; border: 0; }
 .volume-slider::-moz-range-thumb { width: 10px; height: 10px; border: 0; border-radius: 50%; background: #fff; }
 
 .player-menu-wrap { position: relative; }
