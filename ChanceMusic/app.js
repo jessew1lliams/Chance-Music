@@ -2239,8 +2239,6 @@ function App() {
               <img className="icon-img nav-icon-img" src={ICONS.next} alt="Следующий" />
             </button>
           </div>
-          <div className="muted player-time-left">Осталось: {formatTime(Math.max(0, (duration || 0) - (progress || 0)))}</div>
-          {playerNotice && <div className="muted player-time-left">{playerNotice}</div>}
         </div>
 
         <div className="player-right">
