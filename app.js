@@ -75,6 +75,30 @@ const DEV_USERS = [
   }
 ];
 
+const VIEW_TO_ROUTE = {
+  home: "main",
+  search: "search",
+  collection: "connections",
+  developers: "developers",
+  profile: "profile",
+  admin: "admin"
+};
+
+const ROUTE_TO_VIEW = {
+  main: "home",
+  search: "search",
+  connections: "collection",
+  developers: "developers",
+  profile: "profile",
+  admin: "admin"
+};
+
+function getViewFromHash() {
+  const raw = String(window.location.hash || "").replace(/^#\/?/, "").trim().toLowerCase();
+  return ROUTE_TO_VIEW[raw] || "home";
+}
+
+
 function formatTime(v) {
   if (!Number.isFinite(v)) return "0:00";
   const m = Math.floor(v / 60);
@@ -205,7 +229,7 @@ function Nick({ user }) {
 
 function App() {
   const [data, setData] = useState(null);
-  const [activeView, setActiveView] = useState("home");
+  const [activeView, setActiveView] = useState(() => getViewFromHash());
   const [viewedProfileId, setViewedProfileId] = useState(null);
   const [query, setQuery] = useState("");
 
@@ -275,6 +299,7 @@ function App() {
   const eqFiltersRef = useRef([]);
   const eqGainRef = useRef(null);
   const playerMenuRef = useRef(null);
+  const hashSyncRef = useRef(false);
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
   const profileUser = useMemo(() => {
@@ -324,6 +349,30 @@ function App() {
     if (!session) localStorage.removeItem(AUTH_SESSION_KEY);
     else safeSetLocalStorage(AUTH_SESSION_KEY, JSON.stringify(session));
   }, [session]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      hashSyncRef.current = true;
+      setActiveView(getViewFromHash());
+      setViewedProfileId(null);
+      setEditProfileMode(false);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    if (!window.location.hash) {
+      window.history.replaceState(null, "", `#/${VIEW_TO_ROUTE.home}`);
+    }
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const route = VIEW_TO_ROUTE[activeView] || VIEW_TO_ROUTE.home;
+    const targetHash = `#/${route}`;
+    if (window.location.hash !== targetHash) {
+      if (hashSyncRef.current) window.history.replaceState(null, "", targetHash);
+      else window.history.pushState(null, "", targetHash);
+    }
+    hashSyncRef.current = false;
+  }, [activeView]);
 
   useEffect(() => {
     const savedSettings = localStorage.getItem(SPOTIFY_SETTINGS_KEY);
@@ -1599,6 +1648,7 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
 
 
 
