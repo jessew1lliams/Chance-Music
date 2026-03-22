@@ -200,7 +200,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   position: absolute;
   left: 0;
   right: 0;
-  top: -2px;
+  top: -1px;
   z-index: 2;
   opacity: 0.22;
   transition: opacity 0.2s ease;
@@ -209,7 +209,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .player-progress-wrap:focus-within { opacity: 1; }
 .progress {
   width: 100%;
-  height: 3px;
+  height: 2px;
   margin: 0;
   -webkit-appearance: none;
   appearance: none;
@@ -217,7 +217,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border-radius: 999px;
   cursor: pointer;
 }
-.progress::-webkit-slider-runnable-track { height: 3px; background: transparent; border-radius: 999px; }
+.progress::-webkit-slider-runnable-track { height: 2px; background: transparent; border-radius: 999px; }
 .progress::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -229,9 +229,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   opacity: 0;
   transition: opacity .15s ease, transform .15s ease, background .15s ease;
 }
-.progress:hover { height: 4px; }
+.progress:hover { height: 3px; }
 
-.progress:hover::-webkit-slider-runnable-track { height: 4px; }
+.progress:hover::-webkit-slider-runnable-track { height: 3px; }
 
 .progress:hover::-webkit-slider-thumb { opacity: 1; transform: scale(1.05); background: #9a9a9a; }
 
@@ -289,7 +289,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   opacity: 0;
   transform: translateY(8px);
   pointer-events: none;
-  transition: opacity .2s ease, transform .2s ease;
+  transition: opacity .24s ease, transform .24s ease;
 }
 .volume-pop.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
 .volume-slider {
