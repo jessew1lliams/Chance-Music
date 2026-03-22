@@ -230,6 +230,17 @@ function mapPublicRowToTrack(row, fallbackIdx = 0) {
   };
 }
 
+function fallbackTitleFromUrl(url) {
+  try {
+    const u = new URL(String(url || "").trim());
+    const parts = u.pathname.split("/").filter(Boolean);
+    const last = parts[parts.length - 1] || "Трек";
+    return decodeURIComponent(last).replace(/[-_]+/g, " ");
+  } catch {
+    return "Трек";
+  }
+}
+
 function mergeUsersWithSupabase(localUsers, profiles) {
   const list = Array.isArray(localUsers) ? [...localUsers] : [];
   const byHandle = new Map(list.map((u, idx) => [normalizeHandle(u.handle || u.username), idx]));
@@ -1091,8 +1102,8 @@ function App() {
     const title = String(yandexDraft.title || "").trim();
     const artist = String(yandexDraft.artist || "").trim();
     const url = String(yandexDraft.url || "").trim();
-    if (!title || !artist || !url) {
-      setYandexError("Заполни название, артиста и ссылку Яндекс Музыки.");
+    if (!url) {
+      setYandexError("Вставь ссылку Яндекс Музыки.");
       return;
     }
     if (!/^https?:\/\/music\.yandex\./i.test(url) && !/^https?:\/\/(ya\.ru|yandex\.)/i.test(url)) {
@@ -1100,7 +1111,9 @@ function App() {
       return;
     }
     const id = `ym_${Date.now()}`;
-    setYandexTracks((prev) => [...prev, { id, title, artist, url }]);
+    const finalTitle = title || fallbackTitleFromUrl(url);
+    const finalArtist = artist || "Yandex Music";
+    setYandexTracks((prev) => [...prev, { id, title: finalTitle, artist: finalArtist, url }]);
     setYandexDraft({ title: "", artist: "", url: "" });
     setYandexError("");
   };
@@ -1118,20 +1131,28 @@ function App() {
     const lines = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
     const parsed = [];
     lines.forEach((line, idx) => {
-      const parts = line.split("|").map((x) => x.trim());
-      if (parts.length < 3) return;
-      const [title, artist, url] = parts;
-      if (!title || !artist || !url) return;
+      const parts = line.split("|").map((x) => x.trim()).filter(Boolean);
+      let title = "";
+      let artist = "";
+      let url = "";
+      if (parts.length === 1) {
+        url = parts[0];
+      } else if (parts.length >= 3) {
+        [title, artist, url] = parts;
+      } else {
+        return;
+      }
+      if (!url) return;
       if (!/^https?:\/\/music\.yandex\./i.test(url) && !/^https?:\/\/(ya\.ru|yandex\.)/i.test(url)) return;
       parsed.push({
         id: `ym_${Date.now()}_${idx}`,
-        title,
-        artist,
+        title: title || fallbackTitleFromUrl(url),
+        artist: artist || "Yandex Music",
         url
       });
     });
     if (!parsed.length) {
-      setYandexError("Формат строк: Название | Артист | https://music.yandex.ru/...");
+      setYandexError("Формат строк: https://music.yandex.ru/... или Название | Артист | https://music.yandex.ru/...");
       return;
     }
     setYandexTracks((prev) => [...prev, ...parsed]);
@@ -2094,13 +2115,13 @@ function App() {
                   <div className="row">
                     <input
                       className="field"
-                      placeholder="Название трека"
+                      placeholder="Название трека (необязательно)"
                       value={yandexDraft.title}
                       onChange={(e) => setYandexDraft((d) => ({ ...d, title: e.target.value }))}
                     />
                     <input
                       className="field"
-                      placeholder="Артист"
+                      placeholder="Артист (необязательно)"
                       value={yandexDraft.artist}
                       onChange={(e) => setYandexDraft((d) => ({ ...d, artist: e.target.value }))}
                     />
@@ -2119,7 +2140,7 @@ function App() {
                   <textarea
                     className="field"
                     rows={5}
-                    placeholder={"Пакетный импорт (каждая строка):\nНазвание | Артист | https://music.yandex.ru/..."}
+                    placeholder={"Пакетный импорт (каждая строка):\nhttps://music.yandex.ru/...\nили\nНазвание | Артист | https://music.yandex.ru/..."}
                     value={yandexBulkText}
                     onChange={(e) => setYandexBulkText(e.target.value)}
                   />
