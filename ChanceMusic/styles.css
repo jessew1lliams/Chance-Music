@@ -183,7 +183,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   bottom: 0;
   z-index: 20;
   background: #000;
-  border-top: 1px solid #2a2a2a;
+  border-top: 0;
   padding: 18px 0 16px;
   min-height: 112px;
   display: grid;
@@ -200,9 +200,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   position: absolute;
   left: 0;
   right: 0;
-  top: -7px;
+  top: 0;
   z-index: 2;
-  opacity: 0.22;
+  opacity: 0.28;
   transition: opacity 0.2s ease;
 }
 .player-progress-wrap:hover,
@@ -234,9 +234,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
   opacity: 0;
   transition: opacity .15s ease, transform .15s ease, background .15s ease;
 }
-.progress:hover { background-size: 100% 2px; }
+.progress:hover { background-size: 100% 1px; }
 
-.progress:hover::-webkit-slider-runnable-track { height: 2px; }
+.progress:hover::-webkit-slider-runnable-track { height: 1px; }
 
 .progress:hover::-webkit-slider-thumb { opacity: 1; transform: scale(1.05); background: #c0c0c0; }
 
@@ -281,7 +281,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .volume-btn { min-width: 36px; min-height: 36px; opacity: 0.96; }
 .volume-pop {
   position: absolute;
-  right: 4px;
+  left: 50%;
+  right: auto;
   bottom: 42px;
   width: 24px;
   height: 96px;
@@ -292,11 +293,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transform: translateY(8px);
+  transform: translate(-50%, 8px);
   pointer-events: none;
   transition: opacity .24s ease, transform .24s ease;
 }
-.volume-pop.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.volume-pop.open { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 .volume-slider {
   -webkit-appearance: none;
   appearance: none;
