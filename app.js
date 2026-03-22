@@ -365,6 +365,7 @@ function App() {
   const playerMenuRef = useRef(null);
   const hashSyncRef = useRef(false);
   const supabaseSchemaRef = useRef("auto");
+  const usersRef = useRef(users);
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
   const profileUser = useMemo(() => {
@@ -387,6 +388,9 @@ function App() {
     if (!ok) {
       setProfileError("Не удалось сохранить изменения профиля. Файл изображения слишком большой для браузера.");
     }
+  }, [users]);
+  useEffect(() => {
+    usersRef.current = users;
   }, [users]);
 
   useEffect(() => {
@@ -1002,7 +1006,7 @@ function App() {
     }
     setSupabaseSyncing(true);
     try {
-      const payload = users.filter(Boolean);
+      const payload = (usersRef.current || []).filter(Boolean);
 
       if (!payload.length) {
         if (!silent) setSupabaseStatus("Supabase: нет пользователей для выгрузки.");
@@ -1038,7 +1042,7 @@ function App() {
       stopped = true;
       clearInterval(timer);
     };
-  }, [supabaseAnonKey, users.length]);
+  }, [supabaseAnonKey]);
   const onAuthSubmit = (e) => {
     e.preventDefault();
     setAuthError("");
@@ -1129,12 +1133,21 @@ function App() {
 
   const setRole = (id, role) => {
     if (!isDeveloperOwner) return;
+    let changedUser = null;
     setUsers((prev) => prev.map((u) => {
       if (u.id !== id) return u;
-      if (isJesseAccount(u)) return { ...u, role: "admin" };
-      if (isHoronskyAccount(u) && role !== "admin") return { ...u, role: "admin" };
-      return { ...u, role };
+      if (isJesseAccount(u)) {
+        changedUser = { ...u, role: "admin" };
+        return changedUser;
+      }
+      if (isHoronskyAccount(u) && role !== "admin") {
+        changedUser = { ...u, role: "admin" };
+        return changedUser;
+      }
+      changedUser = { ...u, role };
+      return changedUser;
     }));
+    if (changedUser) syncUserToSupabase(changedUser);
   };
   const updateCurrentUserNickStyle = (patch) => {
     if (!currentUser) return;
@@ -1157,6 +1170,16 @@ function App() {
       return u;
     }));
     setProfileMessage("Пользователь добавлен в друзья.");
+  };
+
+  const removeFriend = (targetId) => {
+    if (!currentUser || targetId === currentUser.id) return;
+    setUsers((prev) => prev.map((u) => {
+      if (u.id === currentUser.id) return { ...u, friends: (u.friends || []).filter((id) => id !== targetId) };
+      if (u.id === targetId) return { ...u, friends: (u.friends || []).filter((id) => id !== currentUser.id) };
+      return u;
+    }));
+    setProfileMessage("Пользователь удален из друзей.");
   };
 
   const openProfile = (id) => {
@@ -1400,7 +1423,14 @@ function App() {
                       <img className="avatar" src={u.avatar} alt={u.username} />
                       <button className="link-btn" onClick={() => openProfile(u.id)}><Nick user={u} /></button>
                       <p className="muted">@{u.handle || normalizeHandle(u.username)} · {u.role}</p>
-                      {u.id !== currentUser.id && <button className="small-btn" onClick={() => addFriend(u.id)}>{currentUser.friends.includes(u.id) ? "Уже в друзьях" : "Добавить в друзья"}</button>}
+                      {u.id !== currentUser.id && (
+                        <button
+                          className="small-btn"
+                          onClick={() => (currentUser.friends.includes(u.id) ? removeFriend(u.id) : addFriend(u.id))}
+                        >
+                          {currentUser.friends.includes(u.id) ? "Убрать из друзей" : "Добавить в друзья"}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1440,7 +1470,16 @@ function App() {
               )}
             </div>
 
-            {profileUser.id !== currentUser.id && <div className="row" style={{ marginTop: 12 }}><button className="small-btn" onClick={() => addFriend(profileUser.id)}>{currentUser.friends.includes(profileUser.id) ? "Уже в друзьях" : "Добавить в друзья"}</button></div>}
+            {profileUser.id !== currentUser.id && (
+              <div className="row" style={{ marginTop: 12 }}>
+                <button
+                  className="small-btn"
+                  onClick={() => (currentUser.friends.includes(profileUser.id) ? removeFriend(profileUser.id) : addFriend(profileUser.id))}
+                >
+                  {currentUser.friends.includes(profileUser.id) ? "Убрать из друзей" : "Добавить в друзья"}
+                </button>
+              </div>
+            )}
 
             {profileUser.id === currentUser.id && editProfileMode && (
               <div className="card" style={{ marginTop: 12, background: "#0b0b0b" }}>
@@ -1492,6 +1531,7 @@ function App() {
                       <img className="avatar" src={f.avatar} alt={f.username} />
                       <button className="link-btn" onClick={() => openProfile(f.id)}><Nick user={f} /></button>
                       <p className="muted">{f.role}</p>
+                      <button className="small-btn" onClick={() => removeFriend(f.id)}>Убрать из друзей</button>
                     </div>
                   ))}
                 </div>
@@ -1516,8 +1556,28 @@ function App() {
                     <option value="admin">admin</option>
                   </select>
                   <label className="muted">Цвет ника</label>
-                  <input className="field" type="color" value={u.nickStyle?.color || "#ffffff"} onChange={(e) => setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, nickStyle: { ...(x.nickStyle || {}), color: e.target.value, glow: Boolean(x.nickStyle?.glow) } } : x))} />
-                  <label className="muted row"><input type="checkbox" checked={Boolean(u.nickStyle?.glow)} onChange={(e) => setUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, nickStyle: { ...(x.nickStyle || {}), color: x.nickStyle?.color || "#ffffff", glow: e.target.checked } } : x))} />Свечение ника</label>
+                  <input
+                    className="field"
+                    type="color"
+                    value={u.nickStyle?.color || "#ffffff"}
+                    onChange={(e) => {
+                      const updated = { ...u, nickStyle: { ...(u.nickStyle || {}), color: e.target.value, glow: Boolean(u.nickStyle?.glow) } };
+                      setUsers((prev) => prev.map((x) => x.id === u.id ? updated : x));
+                      syncUserToSupabase(updated);
+                    }}
+                  />
+                  <label className="muted row">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(u.nickStyle?.glow)}
+                      onChange={(e) => {
+                        const updated = { ...u, nickStyle: { ...(u.nickStyle || {}), color: u.nickStyle?.color || "#ffffff", glow: e.target.checked } };
+                        setUsers((prev) => prev.map((x) => x.id === u.id ? updated : x));
+                        syncUserToSupabase(updated);
+                      }}
+                    />
+                    Свечение ника
+                  </label>
                 </div>
               ))}
             </div>
