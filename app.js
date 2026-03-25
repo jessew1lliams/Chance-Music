@@ -27,6 +27,7 @@ const SOUNDCLOUD_OAUTH_KEY = "chance_music_soundcloud_oauth_v1";
 const SOUNDCLOUD_VERIFIER_KEY = "chance_music_soundcloud_verifier_v1";
 const SOUNDCLOUD_STATE_KEY = "chance_music_soundcloud_state_v1";
 const YANDEX_SETTINGS_KEY = "chance_music_yandex_settings_v1";
+const PLAYER_VOLUME_KEY = "chance_music_player_volume_v1";
 
 const SAMPLE_TRACK = {
   id: "demo-track-1",
@@ -393,7 +394,11 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(() => {
+    const raw = Number(localStorage.getItem(PLAYER_VOLUME_KEY) || "0.8");
+    if (!Number.isFinite(raw)) return 0.8;
+    return Math.max(0, Math.min(1, raw));
+  });
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
   const [playerMenuOpen, setPlayerMenuOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
@@ -838,6 +843,7 @@ function App() {
     if (soundcloudWidgetRef.current) {
       try { soundcloudWidgetRef.current.setVolume(Math.max(0, Math.min(100, Math.round(volume * 100)))); } catch {}
     }
+    safeSetLocalStorage(PLAYER_VOLUME_KEY, String(volume));
   }, [volume]);
 
   const ensureAudioGraph = () => {
@@ -2023,6 +2029,9 @@ function App() {
             visual: false
           });
           setTimeout(() => {
+            try { widget.setVolume(Math.max(0, Math.min(100, Math.round(volume * 100)))); } catch {}
+          }, 120);
+          setTimeout(() => {
             try { widget.play(); } catch {}
           }, 250);
           setTimeout(() => {
@@ -2047,6 +2056,7 @@ function App() {
     setTimeout(() => {
       if (!audioRef.current) return;
       ensureAudioGraph();
+      audioRef.current.volume = volume;
       audioRef.current.load();
       audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
       if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
@@ -2073,6 +2083,9 @@ function App() {
                 show_teaser: false,
                 visual: false
               });
+              setTimeout(() => {
+                try { widget.setVolume(Math.max(0, Math.min(100, Math.round(volume * 100)))); } catch {}
+              }, 120);
               setTimeout(() => { try { widget.play(); } catch {} }, 250);
             } else {
               widget.play();

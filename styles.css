@@ -347,8 +347,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   left: auto;
   top: 50%;
   bottom: auto;
-  width: 24px;
-  height: 96px;
+  width: 124px;
+  height: 34px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -364,11 +364,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .volume-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 72px;
+  width: 104px;
   height: 4px;
   background: transparent;
-  transform: rotate(-90deg);
-  transform-origin: center;
   margin: 0;
   border: 0;
   outline: none;
