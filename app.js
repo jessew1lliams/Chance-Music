@@ -388,6 +388,7 @@ function App() {
   const [playerMenuOpen, setPlayerMenuOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [playerNotice, setPlayerNotice] = useState("");
+  const [externalPlayer, setExternalPlayer] = useState(null);
   const [likeHover, setLikeHover] = useState(false);
 
   const [eqOpen, setEqOpen] = useState(false);
@@ -1912,7 +1913,23 @@ function App() {
   const myFriends = useMemo(() => users.filter((u) => currentUser?.friends.includes(u.id)), [users, currentUser]);
 
   const playTrackById = (id) => {
+    const target = tracks.find((t) => t.id === id);
+    if (!target) return;
+    const isSoundcloudNoStream = !target.audio && String(target.format || "").toUpperCase().includes("SOUNDCLOUD") && Boolean(target.sourceUrl);
     setCurrentTrackId(id);
+    if (isSoundcloudNoStream) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      setIsPlaying(false);
+      setProgress(0);
+      setDuration(0);
+      setExternalPlayer({ provider: "soundcloud", url: target.sourceUrl, title: target.title });
+      setPlayerNotice("Трек воспроизводится через встроенный SoundCloud-плеер.");
+      return;
+    }
+    setExternalPlayer(null);
     setTimeout(() => {
       if (!audioRef.current) return;
       ensureAudioGraph();
@@ -1923,6 +1940,10 @@ function App() {
   };
 
   const onPlayPause = () => {
+    if (externalPlayer) {
+      setPlayerNotice("Управление этим треком доступно во встроенном SoundCloud-плеере выше.");
+      return;
+    }
     if (!audioRef.current || !currentTrack) return;
     ensureAudioGraph();
     if (isPlaying) {
@@ -1947,6 +1968,11 @@ function App() {
   };
 
   const onStop = () => {
+    if (externalPlayer) {
+      setExternalPlayer(null);
+      setPlayerNotice("");
+      return;
+    }
     if (!audioRef.current) return;
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
@@ -2025,7 +2051,9 @@ function App() {
   if (!data) return <div className="main">Загрузка...</div>;
 
   const TrackCard = ({ track }) => {
-    const hasPlayableAudio = Boolean(track?.audio);
+    const hasPlayableAudio = Boolean(
+      track?.audio || (String(track?.format || "").toUpperCase().includes("SOUNDCLOUD") && track?.sourceUrl)
+    );
     return (
       <div className="card">
         <img className="cover" src={track.cover} alt={track.title} />
@@ -2147,8 +2175,8 @@ function App() {
                                 key={t.id}
                                 className="album-track-row"
                                 onClick={() => playTrackById(t.id)}
-                                disabled={!t.audio}
-                                title={t.audio ? "Слушать" : "Трек недоступен для воспроизведения"}
+                                disabled={!Boolean(t.audio || (String(t.format || "").toUpperCase().includes("SOUNDCLOUD") && t.sourceUrl))}
+                                title={Boolean(t.audio || (String(t.format || "").toUpperCase().includes("SOUNDCLOUD") && t.sourceUrl)) ? "Слушать" : "Трек недоступен для воспроизведения"}
                               >
                                 <span className="album-track-index">{idx + 1}.</span>
                                 <span className="album-track-name">{t.title}</span>
@@ -2575,7 +2603,19 @@ function App() {
         )}
       </main>
 
-            <footer className="player">
+      {externalPlayer?.provider === "soundcloud" && externalPlayer?.url && (
+        <div className="external-player-panel">
+          <iframe
+            title="SoundCloud embedded player"
+            className="external-player-iframe"
+            src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(externalPlayer.url)}&auto_play=true&hide_related=true&show_comments=false&show_user=true&show_reposts=false&visual=false`}
+            allow="autoplay"
+          />
+          <p className="muted">Сейчас играет через встроенный SoundCloud-плеер: {externalPlayer.title || "трек"}</p>
+        </div>
+      )}
+
+      <footer className="player">
         <div className="player-progress-wrap">
           <input
             className="progress"
