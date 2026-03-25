@@ -402,6 +402,7 @@ function App() {
   const [soundcloudTracks, setSoundcloudTracks] = useState([]);
   const [soundcloudLoading, setSoundcloudLoading] = useState(false);
   const [soundcloudError, setSoundcloudError] = useState("");
+  const [soundcloudAutoPublish, setSoundcloudAutoPublish] = useState(true);
   const [yandexTracks, setYandexTracks] = useState(() => {
     try {
       const raw = JSON.parse(localStorage.getItem(YANDEX_SETTINGS_KEY) || "[]");
@@ -428,6 +429,7 @@ function App() {
   const hashSyncRef = useRef(false);
   const supabaseSchemaRef = useRef("auto");
   const usersRef = useRef(users);
+  const soundcloudAutoPublishRef = useRef("");
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
   const profileUser = useMemo(() => {
@@ -599,6 +601,7 @@ function App() {
         if (p.clientSecret) setSoundcloudClientSecret(p.clientSecret);
         if (p.redirectUri) setSoundcloudRedirectUri(p.redirectUri);
         if (p.profileUrl) setSoundcloudProfileUrl(p.profileUrl);
+        if (typeof p.autoPublish === "boolean") setSoundcloudAutoPublish(p.autoPublish);
         if (p.connected) setSoundcloudConnected(true);
       } catch {}
     }
@@ -636,9 +639,10 @@ function App() {
       clientSecret: soundcloudClientSecret.trim(),
       redirectUri: soundcloudRedirectUri.trim(),
       profileUrl: soundcloudProfileUrl.trim(),
-      connected: soundcloudConnected
+      connected: soundcloudConnected,
+      autoPublish: soundcloudAutoPublish
     }));
-  }, [soundcloudClientId, soundcloudClientSecret, soundcloudRedirectUri, soundcloudProfileUrl, soundcloudConnected]);
+  }, [soundcloudClientId, soundcloudClientSecret, soundcloudRedirectUri, soundcloudProfileUrl, soundcloudConnected, soundcloudAutoPublish]);
   useEffect(() => {
     safeSetLocalStorage(YANDEX_SETTINGS_KEY, JSON.stringify(yandexTracks || []));
   }, [yandexTracks]);
@@ -1149,6 +1153,17 @@ function App() {
     };
     loadTracks();
   }, [soundcloudActivePlaylistId, soundcloudConnected]);
+
+  useEffect(() => {
+    if (!isJesseOwner) return;
+    if (!soundcloudConnected) return;
+    if (!soundcloudAutoPublish) return;
+    if (!soundcloudTracks.length) return;
+    const key = soundcloudTracks.map((t) => t.providerTrackId || t.id).join("|");
+    if (!key || soundcloudAutoPublishRef.current === key) return;
+    soundcloudAutoPublishRef.current = key;
+    publishSoundcloudToPublicCatalog();
+  }, [soundcloudTracks, soundcloudConnected, soundcloudAutoPublish, isJesseOwner]);
 
   const soundcloudLogout = () => {
     setSoundcloudConnected(false);
@@ -2210,6 +2225,16 @@ function App() {
                     {soundcloudConnected && isJesseOwner && <button className="small-btn" onClick={publishSoundcloudToPublicCatalog}>Опубликовать на Главной</button>}
                     {soundcloudToken?.accessToken && <button className="small-btn" onClick={soundcloudLogout}>Выйти из SoundCloud</button>}
                   </div>
+                  {isJesseOwner && (
+                    <label className="muted row">
+                      <input
+                        type="checkbox"
+                        checked={soundcloudAutoPublish}
+                        onChange={(e) => setSoundcloudAutoPublish(e.target.checked)}
+                      />
+                      Автопубликация SoundCloud на Главной
+                    </label>
+                  )}
 
                   {soundcloudUser && <p className="muted">Подключен аккаунт: {soundcloudUser.username || soundcloudUser.full_name || soundcloudUser.permalink}</p>}
                   {soundcloudToken?.accessToken && <p className="muted">OAuth подключен: токен активен.</p>}
