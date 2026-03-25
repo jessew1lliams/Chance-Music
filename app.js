@@ -85,7 +85,6 @@ const DEV_USERS = [
 
 const VIEW_TO_ROUTE = {
   home: "main",
-  albums: "albums",
   search: "search",
   collection: "connections",
   developers: "developers",
@@ -95,7 +94,6 @@ const VIEW_TO_ROUTE = {
 
 const ROUTE_TO_VIEW = {
   main: "home",
-  albums: "albums",
   search: "search",
   connections: "collection",
   developers: "developers",
@@ -345,6 +343,7 @@ function App() {
   const [viewedProfileId, setViewedProfileId] = useState(null);
   const [routeProfileSlug, setRouteProfileSlug] = useState(() => parseHashRoute().profileSlug);
   const [query, setQuery] = useState("");
+  const [homeTab, setHomeTab] = useState("tracks");
 
   const [users, setUsers] = useState(() => loadUsers());
   const [session, setSession] = useState(() => {
@@ -460,10 +459,6 @@ function App() {
     }),
     [tracks]
   );
-  const albumTracks = useMemo(
-    () => tracks.filter((t) => String(t?.format || "").toUpperCase().includes("ALBUM")),
-    [tracks]
-  );
   const playlists = data?.playlists || [];
   const trackIndex = tracks.findIndex((t) => t.id === currentTrackId);
   const currentTrack = tracks[trackIndex] || tracks[0] || null;
@@ -473,8 +468,8 @@ function App() {
     if (!tracks.length) return;
     const exists = tracks.some((t) => t.id === currentTrackId);
     if (exists) return;
-    setCurrentTrackId(mainTracks[0]?.id || albumTracks[0]?.id || tracks[0]?.id || null);
-  }, [tracks, currentTrackId, mainTracks, albumTracks]);
+    setCurrentTrackId(mainTracks[0]?.id || tracks[0]?.id || null);
+  }, [tracks, currentTrackId, mainTracks]);
 
   const applyPublicCatalogTracks = (catalogTracks = [], silent = false) => {
     if (!Array.isArray(catalogTracks) || !catalogTracks.length) return;
@@ -1979,7 +1974,6 @@ function App() {
         <nav className="menu">
           <button className={`menu-btn ${activeView === "search" ? "active" : ""}`} onClick={() => setActiveView("search")}><img className="menu-icon" src="./icons/nav/nav_search.png" alt="" /><span>Поиск</span></button>
           <button className={`menu-btn ${activeView === "home" ? "active" : ""}`} onClick={() => { setActiveView("home"); setViewedProfileId(null); }}><img className="menu-icon" src="./icons/nav/nav_home.png" alt="" /><span>Главная</span></button>
-          <button className={`menu-btn ${activeView === "albums" ? "active" : ""}`} onClick={() => setActiveView("albums")}><img className="menu-icon" src="./icons/nav/nav_connections.png" alt="" /><span>Альбомы</span></button>
           <button className={`menu-btn ${activeView === "developers" ? "active" : ""}`} onClick={() => setActiveView("developers")}><img className="menu-icon" src="./icons/nav/nav_developers.png" alt="" /><span>Разработчики</span></button>
           <div className="menu-toggle-row">
             <button className={`sidebar-toggle ${sidebarCollapsed ? "is-collapsed" : ""}`} type="button" onClick={() => setSidebarCollapsed((v) => !v)} title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}>
@@ -2033,17 +2027,20 @@ function App() {
         {activeView === "home" && (
           <section>
             <h2 className="section-title">Главная</h2>
-            <div className="grid">{mainTracks.map((t) => <TrackCard key={t.id} track={t} />)}</div>
-          </section>
-        )}
-
-        {activeView === "albums" && (
-          <section>
-            <h2 className="section-title">Альбомы</h2>
-            {albumTracks.length === 0 ? (
-              <p className="muted">Пока альбомов нет.</p>
+            <div className="row" style={{ marginBottom: 12 }}>
+              <button className={`small-btn ${homeTab === "tracks" ? "active" : ""}`} onClick={() => setHomeTab("tracks")}>Треки</button>
+              <button className={`small-btn ${homeTab === "albums" ? "active" : ""}`} onClick={() => setHomeTab("albums")}>Альбомы</button>
+            </div>
+            {homeTab === "tracks" ? (
+              <div className="card">
+                <h3 style={{ margin: 0 }}>Треки</h3>
+                <p className="muted">Пока этот раздел пустой. Позже добавим треки аккуратно, без хаоса.</p>
+              </div>
             ) : (
-              <div className="grid">{albumTracks.map((t) => <TrackCard key={t.id} track={t} />)}</div>
+              <div className="card">
+                <h3 style={{ margin: 0 }}>Альбомы</h3>
+                <p className="muted">Пока этот раздел пустой. Наполним его аккуратно отдельными релизами позже.</p>
+              </div>
             )}
           </section>
         )}

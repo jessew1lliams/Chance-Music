@@ -678,7 +678,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .app.mobile-client .menu {
   grid-area: menu;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   width: 100%;
 }

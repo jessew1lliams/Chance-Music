@@ -233,6 +233,13 @@ function mapPublicRowToTrack(row, fallbackIdx = 0) {
   };
 }
 
+function isAlbumPlaylist(source) {
+  const kind = String(source?.playlist_type || source?.set_type || "").toLowerCase();
+  const title = String(source?.title || "").toLowerCase();
+  if (["album", "ep", "compilation"].includes(kind)) return true;
+  return /\balbum\b|\bep\b/.test(title);
+}
+
 function fallbackTitleFromUrl(url) {
   try {
     const u = new URL(String(url || "").trim());
@@ -336,6 +343,7 @@ function App() {
   const [viewedProfileId, setViewedProfileId] = useState(null);
   const [routeProfileSlug, setRouteProfileSlug] = useState(() => parseHashRoute().profileSlug);
   const [query, setQuery] = useState("");
+  const [homeTab, setHomeTab] = useState("tracks");
 
   const [users, setUsers] = useState(() => loadUsers());
   const [session, setSession] = useState(() => {
@@ -442,17 +450,36 @@ function App() {
   const isDeveloperOwner = Boolean(currentUser && isDeveloperAccount(currentUser));
 
   const tracks = data?.tracks || [];
+  const mainTracks = useMemo(
+    () => tracks.filter((t) => {
+      const fmt = String(t?.format || "").toUpperCase();
+      if (fmt.includes("ALBUM")) return false;
+      if (String(t?.artist || "").toLowerCase() === "yandex music" && /^\d+$/.test(String(t?.title || "").trim())) return false;
+      return true;
+    }),
+    [tracks]
+  );
   const playlists = data?.playlists || [];
   const trackIndex = tracks.findIndex((t) => t.id === currentTrackId);
   const currentTrack = tracks[trackIndex] || tracks[0] || null;
   const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
+
+  useEffect(() => {
+    if (!tracks.length) return;
+    const exists = tracks.some((t) => t.id === currentTrackId);
+    if (exists) return;
+    setCurrentTrackId(mainTracks[0]?.id || tracks[0]?.id || null);
+  }, [tracks, currentTrackId, mainTracks]);
 
   const applyPublicCatalogTracks = (catalogTracks = [], silent = false) => {
     if (!Array.isArray(catalogTracks) || !catalogTracks.length) return;
     setData((prev) => {
       const source = prev || normalizeAppData({});
       const existingLiked = new Map((source.tracks || []).map((t) => [t.id, Boolean(t.liked)]));
-      const mergedTracks = catalogTracks.map((t) => ({ ...t, liked: existingLiked.get(t.id) || false }));
+      const mergedTracks = catalogTracks
+        .filter((t) => String(t.id) !== "demo-track-1")
+        .filter((t) => !(String(t.artist || "").toLowerCase() === "yandex music" && /^\d+$/.test(String(t.title || "").trim())))
+        .map((t) => ({ ...t, liked: existingLiked.get(t.id) || false }));
       return {
         ...source,
         tracks: mergedTracks,
@@ -1032,6 +1059,48 @@ function App() {
     providerTrackId: t.id || t.urn || t.permalink_url
   }));
 
+  const collectAllSoundcloudTracksForPublish = async () => {
+    const collected = [];
+    const seenPlaylists = new Set();
+    const sourcePlaylists = Array.isArray(soundcloudPlaylists) ? soundcloudPlaylists : [];
+    for (const playlist of sourcePlaylists) {
+      const pid = String(playlist?.id || "");
+      if (!pid || seenPlaylists.has(pid)) continue;
+      seenPlaylists.add(pid);
+      let fullPlaylist = playlist;
+      if (!Array.isArray(fullPlaylist?.tracks) || !fullPlaylist.tracks.length) {
+        try {
+          fullPlaylist = await soundcloudApi(`/playlists/${pid}`);
+        } catch {
+          fullPlaylist = playlist;
+        }
+      }
+      const normalized = normalizeSoundcloudTracks(fullPlaylist?.tracks || []);
+      const albumFlag = isAlbumPlaylist(fullPlaylist);
+      normalized.forEach((t) => {
+        collected.push({
+          ...t,
+          _fromAlbum: albumFlag,
+          _playlistId: pid,
+          _playlistTitle: String(fullPlaylist?.title || "")
+        });
+      });
+    }
+    if (!collected.length && soundcloudTracks.length) {
+      const currentPlaylist = sourcePlaylists.find((p) => String(p?.id || "") === String(soundcloudActivePlaylistId || ""));
+      const albumFlag = isAlbumPlaylist(currentPlaylist || {});
+      soundcloudTracks.forEach((t) => {
+        collected.push({
+          ...t,
+          _fromAlbum: albumFlag,
+          _playlistId: String(currentPlaylist?.id || ""),
+          _playlistTitle: String(currentPlaylist?.title || "")
+        });
+      });
+    }
+    return collected;
+  };
+
   const resolveSoundcloudStreamUrl = async (transcodingUrl) => {
     const token = soundcloudToken?.accessToken;
     if (!token || !transcodingUrl) return "";
@@ -1158,12 +1227,13 @@ function App() {
     if (!isJesseOwner) return;
     if (!soundcloudConnected) return;
     if (!soundcloudAutoPublish) return;
-    if (!soundcloudTracks.length) return;
-    const key = soundcloudTracks.map((t) => t.providerTrackId || t.id).join("|");
+    const playlistsKey = (soundcloudPlaylists || []).map((p) => p?.id).filter(Boolean).join("|");
+    const tracksKey = (soundcloudTracks || []).map((t) => t.providerTrackId || t.id).filter(Boolean).join("|");
+    const key = `${playlistsKey}::${tracksKey}`;
     if (!key || soundcloudAutoPublishRef.current === key) return;
     soundcloudAutoPublishRef.current = key;
     publishSoundcloudToPublicCatalog();
-  }, [soundcloudTracks, soundcloudConnected, soundcloudAutoPublish, isJesseOwner]);
+  }, [soundcloudPlaylists, soundcloudTracks, soundcloudConnected, soundcloudAutoPublish, isJesseOwner]);
 
   const soundcloudLogout = () => {
     setSoundcloudConnected(false);
@@ -1217,8 +1287,8 @@ function App() {
       setSoundcloudError("Нужен Supabase ключ для публикации.");
       return;
     }
-    if (!soundcloudTracks.length) {
-      setSoundcloudError("Сначала открой плейлист SoundCloud с треками.");
+    if (!soundcloudTracks.length && !soundcloudPlaylists.length) {
+      setSoundcloudError("Сначала подключи SoundCloud и загрузи плейлисты.");
       return;
     }
     setPublicCatalogLoading(true);
@@ -1233,10 +1303,19 @@ function App() {
         throw new Error(`Не удалось очистить каталог: ${clearRaw || clearRes.status}`);
       }
 
+      const allTracks = await collectAllSoundcloudTracksForPublish();
+      const dedup = [];
+      const seenTrackIds = new Set();
+      allTracks.forEach((t) => {
+        const key = String(t.providerTrackId || t.id || "");
+        if (!key || seenTrackIds.has(key)) return;
+        seenTrackIds.add(key);
+        dedup.push(t);
+      });
       const resolvedUrls = await Promise.all(
-        soundcloudTracks.map((t) => resolveSoundcloudStreamUrl(t._transcodingUrl || ""))
+        dedup.map((t) => resolveSoundcloudStreamUrl(t._transcodingUrl || ""))
       );
-      const payload = soundcloudTracks.map((t, idx) => ({
+      const payload = dedup.map((t, idx) => ({
         provider: "soundcloud",
         provider_track_id: String(t.providerTrackId || t.id || idx),
         title: String(t.title || "Без названия"),
@@ -1244,7 +1323,7 @@ function App() {
         cover_url: t.artwork || null,
         audio_url: resolvedUrls[idx] || null,
         source_url: t.link || null,
-        format: "SOUNDCLOUD",
+        format: t._fromAlbum ? "SOUNDCLOUD_ALBUM" : "SOUNDCLOUD",
         duration_sec: Math.max(0, Math.floor((t.durationMs || 0) / 1000)),
         position: idx,
         published_by: normalizeHandle(currentUser?.handle || currentUser?.username || "jessew1lliams")
@@ -1947,8 +2026,22 @@ function App() {
 
         {activeView === "home" && (
           <section>
-            <h2 className="section-title">Пробный трек</h2>
-            <div className="grid">{tracks.map((t) => <TrackCard key={t.id} track={t} />)}</div>
+            <h2 className="section-title">Главная</h2>
+            <div className="row" style={{ marginBottom: 12 }}>
+              <button className={`small-btn ${homeTab === "tracks" ? "active" : ""}`} onClick={() => setHomeTab("tracks")}>Треки</button>
+              <button className={`small-btn ${homeTab === "albums" ? "active" : ""}`} onClick={() => setHomeTab("albums")}>Альбомы</button>
+            </div>
+            {homeTab === "tracks" ? (
+              <div className="card">
+                <h3 style={{ margin: 0 }}>Треки</h3>
+                <p className="muted">Пока этот раздел пустой. Позже добавим треки аккуратно, без хаоса.</p>
+              </div>
+            ) : (
+              <div className="card">
+                <h3 style={{ margin: 0 }}>Альбомы</h3>
+                <p className="muted">Пока этот раздел пустой. Наполним его аккуратно отдельными релизами позже.</p>
+              </div>
+            )}
           </section>
         )}
 
