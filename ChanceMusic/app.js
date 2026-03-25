@@ -453,6 +453,7 @@ function App() {
   const soundcloudWidgetRef = useRef(null);
   const soundcloudWidgetApiPromiseRef = useRef(null);
   const soundcloudWidgetDurationRef = useRef(0);
+  const soundcloudWidgetTrackUrlRef = useRef("");
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
   const eqGainRef = useRef(null);
@@ -834,6 +835,9 @@ function App() {
   useEffect(() => {
     if (!audioRef.current) return;
     audioRef.current.volume = volume;
+    if (soundcloudWidgetRef.current) {
+      try { soundcloudWidgetRef.current.setVolume(Math.max(0, Math.min(100, Math.round(volume * 100)))); } catch {}
+    }
   }, [volume]);
 
   const ensureAudioGraph = () => {
@@ -2008,8 +2012,9 @@ function App() {
         try {
           const widget = await ensureSoundcloudWidget();
           if (!widget) throw new Error("Widget недоступен");
+          soundcloudWidgetTrackUrlRef.current = target.sourceUrl;
           widget.load(target.sourceUrl, {
-            auto_play: true,
+            auto_play: false,
             hide_related: true,
             show_comments: false,
             show_user: false,
@@ -2017,7 +2022,18 @@ function App() {
             show_teaser: false,
             visual: false
           });
-          setIsPlaying(true);
+          setTimeout(() => {
+            try { widget.play(); } catch {}
+          }, 250);
+          setTimeout(() => {
+            try { widget.getDuration((ms) => {
+              const sec = Math.max(0, Number(ms || 0) / 1000);
+              if (sec > 0) {
+                soundcloudWidgetDurationRef.current = sec;
+                setDuration(sec);
+              }
+            }); } catch {}
+          }, 450);
         } catch (err) {
           setPlayerNotice(`SoundCloud playback error: ${err.message}`);
         }
@@ -2042,10 +2058,29 @@ function App() {
       (async () => {
         try {
           const widget = await ensureSoundcloudWidget();
-          if (!widget) return;
-          if (isPlaying) widget.pause();
-          else widget.play();
-        } catch {}
+          if (!widget) throw new Error("Widget недоступен");
+          if (isPlaying) {
+            widget.pause();
+          } else {
+            if (soundcloudWidgetTrackUrlRef.current !== currentTrack?.sourceUrl) {
+              soundcloudWidgetTrackUrlRef.current = currentTrack?.sourceUrl || "";
+              widget.load(currentTrack?.sourceUrl || "", {
+                auto_play: false,
+                hide_related: true,
+                show_comments: false,
+                show_user: false,
+                show_reposts: false,
+                show_teaser: false,
+                visual: false
+              });
+              setTimeout(() => { try { widget.play(); } catch {} }, 250);
+            } else {
+              widget.play();
+            }
+          }
+        } catch (err) {
+          setPlayerNotice(`SoundCloud playback error: ${err.message}`);
+        }
       })();
       return;
     }
@@ -2716,7 +2751,8 @@ function App() {
         ref={soundcloudWidgetIframeRef}
         title="soundcloud-widget-engine"
         className="soundcloud-widget-hidden"
-        src="about:blank"
+        src="https://w.soundcloud.com/player/?url=https%3A//soundcloud.com&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&visual=false"
+        allow="autoplay"
       />
 
       <footer className="player">
