@@ -23,6 +23,9 @@ const SPOTIFY_SCOPES = [
 
 const SOUNDCLOUD_SETTINGS_KEY = "chance_music_soundcloud_settings_v1";
 const SOUNDCLOUD_AUTH_KEY = "chance_music_soundcloud_auth_v1";
+const SOUNDCLOUD_OAUTH_KEY = "chance_music_soundcloud_oauth_v1";
+const SOUNDCLOUD_VERIFIER_KEY = "chance_music_soundcloud_verifier_v1";
+const SOUNDCLOUD_STATE_KEY = "chance_music_soundcloud_state_v1";
 const YANDEX_SETTINGS_KEY = "chance_music_yandex_settings_v1";
 
 const SAMPLE_TRACK = {
@@ -388,6 +391,9 @@ function App() {
 
   const [connectionTab, setConnectionTab] = useState("spotify");
   const [soundcloudClientId, setSoundcloudClientId] = useState("");
+  const [soundcloudClientSecret, setSoundcloudClientSecret] = useState("");
+  const [soundcloudRedirectUri, setSoundcloudRedirectUri] = useState(`${window.location.origin}${window.location.pathname}`);
+  const [soundcloudToken, setSoundcloudToken] = useState(null);
   const [soundcloudProfileUrl, setSoundcloudProfileUrl] = useState("https://soundcloud.com/");
   const [soundcloudConnected, setSoundcloudConnected] = useState(false);
   const [soundcloudUser, setSoundcloudUser] = useState(null);
@@ -590,8 +596,17 @@ function App() {
       try {
         const p = JSON.parse(savedSoundcloud);
         if (p.clientId) setSoundcloudClientId(p.clientId);
+        if (p.clientSecret) setSoundcloudClientSecret(p.clientSecret);
+        if (p.redirectUri) setSoundcloudRedirectUri(p.redirectUri);
         if (p.profileUrl) setSoundcloudProfileUrl(p.profileUrl);
         if (p.connected) setSoundcloudConnected(true);
+      } catch {}
+    }
+    const savedSoundcloudOAuth = localStorage.getItem(SOUNDCLOUD_OAUTH_KEY);
+    if (savedSoundcloudOAuth) {
+      try {
+        const p = JSON.parse(savedSoundcloudOAuth);
+        if (p?.accessToken && p?.expiresAt > Date.now()) setSoundcloudToken(p);
       } catch {}
     }
     const savedSoundcloudAuth = localStorage.getItem(SOUNDCLOUD_AUTH_KEY);
@@ -618,10 +633,12 @@ function App() {
   useEffect(() => {
     safeSetLocalStorage(SOUNDCLOUD_SETTINGS_KEY, JSON.stringify({
       clientId: soundcloudClientId.trim(),
+      clientSecret: soundcloudClientSecret.trim(),
+      redirectUri: soundcloudRedirectUri.trim(),
       profileUrl: soundcloudProfileUrl.trim(),
       connected: soundcloudConnected
     }));
-  }, [soundcloudClientId, soundcloudProfileUrl, soundcloudConnected]);
+  }, [soundcloudClientId, soundcloudClientSecret, soundcloudRedirectUri, soundcloudProfileUrl, soundcloudConnected]);
   useEffect(() => {
     safeSetLocalStorage(YANDEX_SETTINGS_KEY, JSON.stringify(yandexTracks || []));
   }, [yandexTracks]);
@@ -639,18 +656,16 @@ function App() {
     const state = params.get("state");
     if (!code) return;
 
+    const expectedSpotifyState = localStorage.getItem(SPOTIFY_STATE_KEY);
+    if (!expectedSpotifyState || state !== expectedSpotifyState) return;
+
     const saved = JSON.parse(localStorage.getItem(SPOTIFY_SETTINGS_KEY) || "{}");
     const clientId = spotifyClientId || saved.clientId;
     const redirectUri = spotifyRedirectUri || saved.redirectUri;
     const verifier = localStorage.getItem(SPOTIFY_VERIFIER_KEY);
-    const expectedState = localStorage.getItem(SPOTIFY_STATE_KEY);
 
     if (!clientId || !redirectUri || !verifier) {
       setSpotifyError("Не удалось завершить вход Spotify: отсутствуют данные.");
-      return;
-    }
-    if (expectedState && state !== expectedState) {
-      setSpotifyError("Ошибка безопасности Spotify: state не совпал.");
       return;
     }
 
@@ -812,6 +827,66 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const state = params.get("state");
+    if (!code) return;
+
+    const expectedState = localStorage.getItem(SOUNDCLOUD_STATE_KEY);
+    if (!expectedState || state !== expectedState) return;
+
+    const saved = JSON.parse(localStorage.getItem(SOUNDCLOUD_SETTINGS_KEY) || "{}");
+    const clientId = soundcloudClientId || saved.clientId;
+    const clientSecret = soundcloudClientSecret || saved.clientSecret;
+    const redirectUri = soundcloudRedirectUri || saved.redirectUri || `${window.location.origin}${window.location.pathname}`;
+    const verifier = localStorage.getItem(SOUNDCLOUD_VERIFIER_KEY);
+
+    if (!clientId || !clientSecret || !redirectUri || !verifier) {
+      setSoundcloudError("Не удалось завершить вход SoundCloud: проверь Client ID/Secret/Redirect URI.");
+      return;
+    }
+
+    const exchange = async () => {
+      setSoundcloudLoading(true);
+      setSoundcloudError("");
+      try {
+        const body = new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+          code,
+          code_verifier: verifier
+        });
+        const res = await fetch("https://secure.soundcloud.com/oauth/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+          body
+        });
+        const raw = await res.text();
+        let json = {};
+        try { json = raw ? JSON.parse(raw) : {}; } catch { json = { error_description: raw }; }
+        if (!res.ok) throw new Error(json.error_description || json.error || raw || "Ошибка токена SoundCloud");
+        const tokenData = {
+          accessToken: json.access_token,
+          refreshToken: json.refresh_token || "",
+          expiresAt: Date.now() + Math.max(30, (Number(json.expires_in) || 3600) - 30) * 1000
+        };
+        setSoundcloudToken(tokenData);
+        localStorage.setItem(SOUNDCLOUD_OAUTH_KEY, JSON.stringify(tokenData));
+        localStorage.removeItem(SOUNDCLOUD_VERIFIER_KEY);
+        localStorage.removeItem(SOUNDCLOUD_STATE_KEY);
+        window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+      } catch (err) {
+        setSoundcloudError(`SoundCloud login error: ${err.message}`);
+      } finally {
+        setSoundcloudLoading(false);
+      }
+    };
+    exchange();
+  }, [soundcloudClientId, soundcloudClientSecret, soundcloudRedirectUri]);
+
   const onVolumeHoverStart = () => {
     if (volumeHideTimerRef.current) clearTimeout(volumeHideTimerRef.current);
     setVolumeOpen(true);
@@ -917,11 +992,16 @@ function App() {
 
 
   const soundcloudApi = async (path, params = {}) => {
-    const clientId = soundcloudClientId.trim();
-    if (!clientId) throw new Error("Укажи SoundCloud Client ID.");
-    const qp = new URLSearchParams({ ...params, client_id: clientId });
+    const accessToken = soundcloudToken?.accessToken;
+    if (!accessToken) throw new Error("Сначала выполни вход через SoundCloud OAuth.");
+    const qp = new URLSearchParams(params);
     const sep = path.includes("?") ? "&" : "?";
-    const res = await fetch(`https://api.soundcloud.com${path}${sep}${qp.toString()}`);
+    const res = await fetch(`https://api.soundcloud.com${path}${qp.toString() ? `${sep}${qp.toString()}` : ""}`, {
+      headers: {
+        Accept: "application/json; charset=utf-8",
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
     const raw = await res.text();
     let json = null;
     try { json = raw ? JSON.parse(raw) : {}; } catch { json = null; }
@@ -934,27 +1014,80 @@ function App() {
   };
 
   const normalizeSoundcloudTracks = (list) => (Array.isArray(list) ? list : []).filter(Boolean).map((t) => ({
+    _transcodingUrl:
+      t?.media?.transcodings?.find((x) => x?.format?.protocol === "progressive")?.url
+      || t?.media?.transcodings?.find((x) => x?.format?.protocol === "hls")?.url
+      || "",
     id: t.id || t.urn || t.permalink_url,
     title: t.title || "Без названия",
     artist: t.user?.username || soundcloudUser?.username || "SoundCloud",
     artwork: t.artwork_url || t.user?.avatar_url || "https://placehold.co/600x600/000/fff?text=SoundCloud",
     link: t.permalink_url || t.uri,
     durationMs: t.duration || 0,
-    streamUrl: t.stream_url ? `${t.stream_url}${t.stream_url.includes("?") ? "&" : "?"}client_id=${encodeURIComponent(soundcloudClientId.trim())}` : "",
+    streamUrl: "",
     providerTrackId: t.id || t.urn || t.permalink_url
   }));
 
-  const loadSoundcloudHome = async () => {
+  const resolveSoundcloudStreamUrl = async (transcodingUrl) => {
+    const token = soundcloudToken?.accessToken;
+    if (!token || !transcodingUrl) return "";
+    try {
+      const res = await fetch(transcodingUrl, {
+        headers: {
+          Accept: "application/json; charset=utf-8",
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const raw = await res.text();
+      let json = {};
+      try { json = raw ? JSON.parse(raw) : {}; } catch { json = {}; }
+      if (!res.ok) return "";
+      return String(json?.url || "");
+    } catch {
+      return "";
+    }
+  };
+
+  const startSoundcloudLogin = async () => {
     const clientId = soundcloudClientId.trim();
+    const clientSecret = soundcloudClientSecret.trim();
+    const redirectUri = soundcloudRedirectUri.trim();
+    if (!clientId || !clientSecret || !redirectUri) {
+      setSoundcloudError("Укажи Client ID, Client Secret и Redirect URI.");
+      return;
+    }
+    const verifier = randomString(96);
+    const state = randomString(24);
+    const challenge = await createCodeChallenge(verifier);
+    localStorage.setItem(SOUNDCLOUD_VERIFIER_KEY, verifier);
+    localStorage.setItem(SOUNDCLOUD_STATE_KEY, state);
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      code_challenge_method: "S256",
+      code_challenge: challenge,
+      state
+    });
+    window.location.href = `https://secure.soundcloud.com/authorize?${params.toString()}`;
+  };
+
+  const loadSoundcloudHome = async () => {
+    const token = soundcloudToken?.accessToken;
     const profileUrl = soundcloudProfileUrl.trim();
-    if (!clientId || !profileUrl) {
-      setSoundcloudError("Укажи SoundCloud Client ID и ссылку на профиль.");
+    if (!token || !profileUrl) {
+      setSoundcloudError("Сначала войди через SoundCloud OAuth и укажи ссылку на профиль.");
       return;
     }
     setSoundcloudLoading(true);
     setSoundcloudError("");
     try {
-      const resolveRes = await fetch(`https://api.soundcloud.com/resolve?url=${encodeURIComponent(profileUrl)}&client_id=${encodeURIComponent(clientId)}`);
+      const resolveRes = await fetch(`https://api.soundcloud.com/resolve?url=${encodeURIComponent(profileUrl)}`, {
+        headers: {
+          Accept: "application/json; charset=utf-8",
+          Authorization: `Bearer ${token}`
+        }
+      });
       const raw = await resolveRes.text();
       let resolved = null;
       try { resolved = raw ? JSON.parse(raw) : {}; } catch { resolved = null; }
@@ -1024,7 +1157,11 @@ function App() {
     setSoundcloudTracks([]);
     setSoundcloudActivePlaylistId("");
     setSoundcloudError("");
+    setSoundcloudToken(null);
     localStorage.removeItem(SOUNDCLOUD_AUTH_KEY);
+    localStorage.removeItem(SOUNDCLOUD_OAUTH_KEY);
+    localStorage.removeItem(SOUNDCLOUD_VERIFIER_KEY);
+    localStorage.removeItem(SOUNDCLOUD_STATE_KEY);
   };
 
   const supabaseEnabled = Boolean(supabaseAnonKey.trim());
@@ -1081,13 +1218,16 @@ function App() {
         throw new Error(`Не удалось очистить каталог: ${clearRaw || clearRes.status}`);
       }
 
+      const resolvedUrls = await Promise.all(
+        soundcloudTracks.map((t) => resolveSoundcloudStreamUrl(t._transcodingUrl || ""))
+      );
       const payload = soundcloudTracks.map((t, idx) => ({
         provider: "soundcloud",
         provider_track_id: String(t.providerTrackId || t.id || idx),
         title: String(t.title || "Без названия"),
         artist: String(t.artist || "SoundCloud"),
         cover_url: t.artwork || null,
-        audio_url: t.streamUrl || null,
+        audio_url: resolvedUrls[idx] || null,
         source_url: t.link || null,
         format: "SOUNDCLOUD",
         duration_sec: Math.max(0, Math.floor((t.durationMs || 0) / 1000)),
@@ -2057,16 +2197,22 @@ function App() {
                 <div className="card">
                   <div className="row">
                     <input className="field" placeholder="Client ID SoundCloud" value={soundcloudClientId} onChange={(e) => setSoundcloudClientId(e.target.value)} />
+                    <input className="field" placeholder="Client Secret SoundCloud" value={soundcloudClientSecret} onChange={(e) => setSoundcloudClientSecret(e.target.value)} />
+                  </div>
+                  <div className="row">
+                    <input className="field" placeholder="Redirect URI (например, https://jessew1lliams.github.io/Chance-Music/)" value={soundcloudRedirectUri} onChange={(e) => setSoundcloudRedirectUri(e.target.value)} />
                     <input className="field" placeholder="Ссылка на профиль или плейлист SoundCloud" value={soundcloudProfileUrl} onChange={(e) => setSoundcloudProfileUrl(e.target.value)} />
                   </div>
                   <div className="row">
-                    {!soundcloudConnected && <button className="small-btn" onClick={loadSoundcloudHome}>Подключить SoundCloud</button>}
+                    {!soundcloudToken?.accessToken && <button className="small-btn" onClick={startSoundcloudLogin}>Войти через SoundCloud</button>}
+                    {soundcloudToken?.accessToken && !soundcloudConnected && <button className="small-btn" onClick={loadSoundcloudHome}>Подключить SoundCloud</button>}
                     {soundcloudConnected && <button className="small-btn" onClick={loadSoundcloudHome}>Обновить SoundCloud</button>}
                     {soundcloudConnected && isJesseOwner && <button className="small-btn" onClick={publishSoundcloudToPublicCatalog}>Опубликовать на Главной</button>}
-                    {soundcloudConnected && <button className="small-btn" onClick={soundcloudLogout}>Выйти из SoundCloud</button>}
+                    {soundcloudToken?.accessToken && <button className="small-btn" onClick={soundcloudLogout}>Выйти из SoundCloud</button>}
                   </div>
 
                   {soundcloudUser && <p className="muted">Подключен аккаунт: {soundcloudUser.username || soundcloudUser.full_name || soundcloudUser.permalink}</p>}
+                  {soundcloudToken?.accessToken && <p className="muted">OAuth подключен: токен активен.</p>}
                   {soundcloudError && <p className="spotify-error">{soundcloudError}</p>}
                   {soundcloudLoading && <p className="muted">Загрузка данных SoundCloud...</p>}
                   {publicCatalogLoading && <p className="muted">Публикация/обновление общего каталога...</p>}
@@ -2076,10 +2222,10 @@ function App() {
                 <div className="card" style={{ marginTop: 12 }}>
                   <h3>Правила подключения SoundCloud</h3>
                   <ul className="spotify-rules">
-                    <li>Создай приложение в SoundCloud for Developers и скопируй Client ID.</li>
-                    <li>Вставь ссылку на профиль вида `https://soundcloud.com/username` или ссылку на плейлист.</li>
-                    <li>Если API отвечает ошибкой 401/403, чаще всего невалидный Client ID или лимит доступа.</li>
-                    <li>Для прослушивания полного трека используй кнопку "Открыть в SoundCloud".</li>
+                    <li>Создай приложение в SoundCloud for Developers и скопируй Client ID + Client Secret.</li>
+                    <li>Redirect URI в SoundCloud Dashboard должен совпадать с полем на сайте символ в символ.</li>
+                    <li>Сначала нажми "Войти через SoundCloud", потом "Подключить SoundCloud".</li>
+                    <li>Для некоторых треков SoundCloud может отдать только метаданные и ссылку "Открыть".</li>
                   </ul>
                 </div>
 
