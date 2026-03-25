@@ -226,26 +226,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: 12px;
 }
 
-.external-player-panel {
-  position: fixed;
-  left: var(--sidebar-width, 220px);
-  right: 0;
-  bottom: 112px;
-  z-index: 18;
-  background: #090909;
-  border-top: 1px solid #202020;
-  border-bottom: 1px solid #202020;
-  padding: 8px 14px;
-  display: grid;
-  gap: 6px;
-}
-.external-player-iframe {
-  width: 100%;
-  height: 96px;
-  border: 0;
-  border-radius: 8px;
-}
-
 .player {
   --player-pad-x: 14px;
   position: fixed;
@@ -486,7 +466,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .sidebar { border-right: 0; border-bottom: 1px solid #2a2a2a; }
   .home-albums-layout { grid-template-columns: 1fr; }
   .album-side-panel { position: static; }
-  .external-player-panel { bottom: 148px; }
   .player { left: 0; grid-template-columns: 1fr; gap: 8px; min-height: 148px; }
   .player-right { justify-content: flex-start; }
   .main { padding-bottom: 380px; }

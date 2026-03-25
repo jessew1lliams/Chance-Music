@@ -229,7 +229,7 @@ function mapPublicRowToTrack(row, fallbackIdx = 0) {
     id: `pub_${idCore}`,
     title: String(row?.title || "Без названия"),
     artist: String(row?.artist || "Unknown Artist"),
-    cover: row?.cover_url || "https://placehold.co/900x900/000/fff?text=Track",
+    cover: toSoundcloudHighCover(row?.cover_url) || row?.cover_url || "https://placehold.co/900x900/000/fff?text=Track",
     audio: row?.audio_url || "",
     durationSec: Number(row?.duration_sec || 0),
     releaseDate: "2026-03-01",
@@ -258,6 +258,16 @@ function fallbackTitleFromUrl(url) {
   } catch {
     return "Трек";
   }
+}
+
+function toSoundcloudHighCover(url) {
+  const src = String(url || "").trim();
+  if (!src) return "";
+  return src
+    .replace("-large.", "-t500x500.")
+    .replace("-t300x300.", "-t500x500.")
+    .replace("-t200x200.", "-t500x500.")
+    .replace("-crop.", "-t500x500.");
 }
 
 function mergeUsersWithSupabase(localUsers, profiles) {
@@ -388,7 +398,6 @@ function App() {
   const [playerMenuOpen, setPlayerMenuOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [playerNotice, setPlayerNotice] = useState("");
-  const [externalPlayer, setExternalPlayer] = useState(null);
   const [likeHover, setLikeHover] = useState(false);
 
   const [eqOpen, setEqOpen] = useState(false);
@@ -1100,7 +1109,7 @@ function App() {
     id: t.id || t.urn || t.permalink_url,
     title: t.title || "Без названия",
     artist: t.user?.username || soundcloudUser?.username || "SoundCloud",
-    artwork: t.artwork_url || t.user?.avatar_url || "https://placehold.co/600x600/000/fff?text=SoundCloud",
+    artwork: toSoundcloudHighCover(t.artwork_url || t.user?.avatar_url) || "https://placehold.co/600x600/000/fff?text=SoundCloud",
     link: t.permalink_url || t.uri,
     durationMs: t.duration || 0,
     streamUrl: "",
@@ -1915,21 +1924,7 @@ function App() {
   const playTrackById = (id) => {
     const target = tracks.find((t) => t.id === id);
     if (!target) return;
-    const isSoundcloudNoStream = !target.audio && String(target.format || "").toUpperCase().includes("SOUNDCLOUD") && Boolean(target.sourceUrl);
     setCurrentTrackId(id);
-    if (isSoundcloudNoStream) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
-      setIsPlaying(false);
-      setProgress(0);
-      setDuration(0);
-      setExternalPlayer({ provider: "soundcloud", url: target.sourceUrl, title: target.title });
-      setPlayerNotice("Трек воспроизводится через встроенный SoundCloud-плеер.");
-      return;
-    }
-    setExternalPlayer(null);
     setTimeout(() => {
       if (!audioRef.current) return;
       ensureAudioGraph();
@@ -1940,10 +1935,6 @@ function App() {
   };
 
   const onPlayPause = () => {
-    if (externalPlayer) {
-      setPlayerNotice("Управление этим треком доступно во встроенном SoundCloud-плеере выше.");
-      return;
-    }
     if (!audioRef.current || !currentTrack) return;
     ensureAudioGraph();
     if (isPlaying) {
@@ -1968,11 +1959,6 @@ function App() {
   };
 
   const onStop = () => {
-    if (externalPlayer) {
-      setExternalPlayer(null);
-      setPlayerNotice("");
-      return;
-    }
     if (!audioRef.current) return;
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
@@ -2051,9 +2037,7 @@ function App() {
   if (!data) return <div className="main">Загрузка...</div>;
 
   const TrackCard = ({ track }) => {
-    const hasPlayableAudio = Boolean(
-      track?.audio || (String(track?.format || "").toUpperCase().includes("SOUNDCLOUD") && track?.sourceUrl)
-    );
+    const hasPlayableAudio = Boolean(track?.audio);
     return (
       <div className="card">
         <img className="cover" src={track.cover} alt={track.title} />
@@ -2175,8 +2159,8 @@ function App() {
                                 key={t.id}
                                 className="album-track-row"
                                 onClick={() => playTrackById(t.id)}
-                                disabled={!Boolean(t.audio || (String(t.format || "").toUpperCase().includes("SOUNDCLOUD") && t.sourceUrl))}
-                                title={Boolean(t.audio || (String(t.format || "").toUpperCase().includes("SOUNDCLOUD") && t.sourceUrl)) ? "Слушать" : "Трек недоступен для воспроизведения"}
+                                disabled={!Boolean(t.audio)}
+                                title={Boolean(t.audio) ? "Слушать" : "Трек недоступен для воспроизведения"}
                               >
                                 <span className="album-track-index">{idx + 1}.</span>
                                 <span className="album-track-name">{t.title}</span>
@@ -2501,7 +2485,7 @@ function App() {
                   <div className="playlist-list" style={{ marginTop: 12 }}>
                     {soundcloudPlaylists.map((p) => (
                       <div key={p.id || p.urn} className={`card ${String(soundcloudActivePlaylistId) === String(p.id) ? "playlist-active" : ""}`}>
-                        <img className="cover" src={p.artwork_url || p.user?.avatar_url || "https://placehold.co/600x600/000/fff?text=SoundCloud"} alt={p.title} />
+                        <img className="cover" src={toSoundcloudHighCover(p.artwork_url || p.user?.avatar_url) || "https://placehold.co/600x600/000/fff?text=SoundCloud"} alt={p.title} />
                         <h3>{p.title}</h3>
                         <div className="row">
                           <button className="small-btn" onClick={() => setSoundcloudActivePlaylistId(String(p.id))}>Выбрать</button>
@@ -2602,18 +2586,6 @@ function App() {
           </section>
         )}
       </main>
-
-      {externalPlayer?.provider === "soundcloud" && externalPlayer?.url && (
-        <div className="external-player-panel">
-          <iframe
-            title="SoundCloud embedded player"
-            className="external-player-iframe"
-            src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(externalPlayer.url)}&auto_play=true&hide_related=true&show_comments=false&show_user=true&show_reposts=false&visual=false`}
-            allow="autoplay"
-          />
-          <p className="muted">Сейчас играет через встроенный SoundCloud-плеер: {externalPlayer.title || "трек"}</p>
-        </div>
-      )}
 
       <footer className="player">
         <div className="player-progress-wrap">
