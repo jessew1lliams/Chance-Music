@@ -524,7 +524,6 @@ function App() {
       const source = prev || normalizeAppData({});
       const existingLiked = new Map((source.tracks || []).map((t) => [t.id, Boolean(t.liked)]));
       const mergedTracks = catalogTracks
-        .filter((t) => Boolean(t.audio))
         .filter((t) => String(t.id) !== "demo-track-1")
         .filter((t) => !(String(t.artist || "").toLowerCase() === "yandex music" && /^\d+$/.test(String(t.title || "").trim())))
         .map((t) => ({ ...t, liked: existingLiked.get(t.id) || false }));
@@ -1392,14 +1391,13 @@ function App() {
       const soundcloudPayload = dedup
         .map((t, idx) => {
           const stream = resolvedUrls[idx] || fallbackUrls[idx] || "";
-          if (!stream) return null;
           return {
             provider: "soundcloud",
             provider_track_id: `soundcloud:${String(t.providerTrackId || t.id || idx)}`,
             title: String(t.title || "Без названия"),
             artist: String(t.artist || "SoundCloud"),
             cover_url: t.artwork || null,
-            audio_url: stream,
+            audio_url: stream || null,
             source_url: t.link || null,
             format: t._fromAlbum
               ? `SOUNDCLOUD_ALBUM|${encodeURIComponent(String(t._playlistId || "album"))}|${encodeURIComponent(String(t._playlistTitle || "Альбом"))}`
@@ -1408,13 +1406,7 @@ function App() {
             position: idx,
             published_by: normalizeHandle(currentUser?.handle || currentUser?.username || "jessew1lliams")
           };
-        })
-        .filter(Boolean);
-      if (!soundcloudPayload.length) {
-        setPublicCatalogStatus(`Каталог: SoundCloud не отдал поток воспроизведения. Доступных треков: 0 из ${dedup.length}.`);
-        setSoundcloudError("Публикация: у треков нет доступного потока для веб-плеера.");
-        return;
-      }
+        });
 
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_PUBLIC_TRACKS_TABLE}`, {
         method: "POST",
@@ -1429,8 +1421,9 @@ function App() {
       }
       const parsed = (Array.isArray(json) ? json : soundcloudPayload).map((row, idx) => mapPublicRowToTrack(row, idx)).filter((t) => t.audio || t.sourceUrl);
       if (parsed.length) applyPublicCatalogTracks(parsed);
-      const skipped = Math.max(0, dedup.length - soundcloudPayload.length);
-      setPublicCatalogStatus(`Опубликовано в общий каталог: ${soundcloudPayload.length} трек(ов).${skipped ? ` Пропущено без потока: ${skipped}.` : ""}`);
+      const streamReady = soundcloudPayload.filter((x) => Boolean(x.audio_url)).length;
+      const noStream = Math.max(0, soundcloudPayload.length - streamReady);
+      setPublicCatalogStatus(`Опубликовано в общий каталог: ${soundcloudPayload.length} трек(ов). Поток доступен для: ${streamReady}. Без потока: ${noStream}.`);
     } catch (err) {
       setPublicCatalogStatus(`Каталог: ${err.message}`);
       setSoundcloudError(`Публикация не удалась: ${err.message}`);
