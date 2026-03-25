@@ -1317,7 +1317,7 @@ function App() {
       );
       const payload = dedup.map((t, idx) => ({
         provider: "soundcloud",
-        provider_track_id: String(t.providerTrackId || t.id || idx),
+        provider_track_id: `soundcloud:${String(t.providerTrackId || t.id || idx)}`,
         title: String(t.title || "Без названия"),
         artist: String(t.artist || "SoundCloud"),
         cover_url: t.artwork || null,
@@ -1440,7 +1440,7 @@ function App() {
 
       const payload = yandexTracks.map((t, idx) => ({
         provider: "yandex_music",
-        provider_track_id: String(t.id || idx),
+        provider_track_id: `yandex:${String(t.id || idx)}`,
         title: String(t.title || "Без названия"),
         artist: String(t.artist || "Unknown Artist"),
         cover_url: null,
