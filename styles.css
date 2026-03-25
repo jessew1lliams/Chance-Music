@@ -343,9 +343,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .volume-btn { min-width: 36px; min-height: 36px; opacity: 0.96; }
 .volume-pop {
   position: absolute;
-  left: 50%;
-  right: auto;
-  bottom: 42px;
+  right: calc(100% + 4px);
+  left: auto;
+  top: 50%;
+  bottom: auto;
   width: 24px;
   height: 96px;
   border: 0;
@@ -355,11 +356,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transform: translate(-50%, 8px);
+  transform: translate(10px, -50%);
   pointer-events: none;
-  transition: opacity .24s ease, transform .24s ease;
+  transition: opacity .28s ease, transform .28s ease;
 }
-.volume-pop.open { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.volume-pop.open { opacity: 1; transform: translate(0, -50%); pointer-events: auto; }
 .volume-slider {
   -webkit-appearance: none;
   appearance: none;
