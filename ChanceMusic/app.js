@@ -219,17 +219,26 @@ function normalizeHandle(raw) {
 
 function mapPublicRowToTrack(row, fallbackIdx = 0) {
   const idCore = String(row?.provider_track_id || row?.id || `track_${fallbackIdx}`);
+  const rawFormat = String(row?.format || "SOUNDCLOUD");
+  const [baseFormat, albumIdEncoded = "", albumTitleEncoded = ""] = rawFormat.split("|");
+  let albumId = "";
+  let albumTitle = "";
+  try { albumId = albumIdEncoded ? decodeURIComponent(albumIdEncoded) : ""; } catch { albumId = albumIdEncoded; }
+  try { albumTitle = albumTitleEncoded ? decodeURIComponent(albumTitleEncoded) : ""; } catch { albumTitle = albumTitleEncoded; }
   return {
     id: `pub_${idCore}`,
     title: String(row?.title || "Без названия"),
     artist: String(row?.artist || "Unknown Artist"),
     cover: row?.cover_url || "https://placehold.co/900x900/000/fff?text=Track",
     audio: row?.audio_url || "",
+    durationSec: Number(row?.duration_sec || 0),
     releaseDate: "2026-03-01",
     isUpcoming: false,
     liked: false,
-    format: String(row?.format || "SOUNDCLOUD").toUpperCase(),
-    sourceUrl: row?.source_url || ""
+    format: String(baseFormat || "SOUNDCLOUD").toUpperCase(),
+    sourceUrl: row?.source_url || "",
+    albumId,
+    albumTitle
   };
 }
 
@@ -344,6 +353,7 @@ function App() {
   const [routeProfileSlug, setRouteProfileSlug] = useState(() => parseHashRoute().profileSlug);
   const [query, setQuery] = useState("");
   const [homeTab, setHomeTab] = useState("tracks");
+  const [homeAlbumKey, setHomeAlbumKey] = useState("");
 
   const [users, setUsers] = useState(() => loadUsers());
   const [session, setSession] = useState(() => {
@@ -459,6 +469,34 @@ function App() {
     }),
     [tracks]
   );
+  const albumGroups = useMemo(() => {
+    const groups = new Map();
+    tracks.forEach((t) => {
+      const fmt = String(t?.format || "").toUpperCase();
+      if (!fmt.includes("ALBUM")) return;
+      const key = String(t?.albumId || "");
+      if (!key) return;
+      const prev = groups.get(key);
+      if (prev) {
+        prev.tracks.push(t);
+      } else {
+        groups.set(key, {
+          key,
+          title: String(t?.albumTitle || "Альбом"),
+          artist: String(t?.artist || "Unknown Artist"),
+          cover: t?.cover || "https://placehold.co/900x900/000/fff?text=Album",
+          tracks: [t]
+        });
+      }
+    });
+    return Array.from(groups.values())
+      .map((g) => ({ ...g, count: g.tracks.length }))
+      .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title, "ru"));
+  }, [tracks]);
+  const selectedAlbum = useMemo(
+    () => albumGroups.find((a) => a.key === homeAlbumKey) || null,
+    [albumGroups, homeAlbumKey]
+  );
   const playlists = data?.playlists || [];
   const trackIndex = tracks.findIndex((t) => t.id === currentTrackId);
   const currentTrack = tracks[trackIndex] || tracks[0] || null;
@@ -471,12 +509,22 @@ function App() {
     setCurrentTrackId(mainTracks[0]?.id || tracks[0]?.id || null);
   }, [tracks, currentTrackId, mainTracks]);
 
+  useEffect(() => {
+    if (!albumGroups.length) {
+      if (homeAlbumKey) setHomeAlbumKey("");
+      return;
+    }
+    const exists = albumGroups.some((a) => a.key === homeAlbumKey);
+    if (!exists) setHomeAlbumKey(albumGroups[0].key);
+  }, [albumGroups, homeAlbumKey]);
+
   const applyPublicCatalogTracks = (catalogTracks = [], silent = false) => {
     if (!Array.isArray(catalogTracks) || !catalogTracks.length) return;
     setData((prev) => {
       const source = prev || normalizeAppData({});
       const existingLiked = new Map((source.tracks || []).map((t) => [t.id, Boolean(t.liked)]));
       const mergedTracks = catalogTracks
+        .filter((t) => Boolean(t.audio))
         .filter((t) => String(t.id) !== "demo-track-1")
         .filter((t) => !(String(t.artist || "").toLowerCase() === "yandex music" && /^\d+$/.test(String(t.title || "").trim())))
         .map((t) => ({ ...t, liked: existingLiked.get(t.id) || false }));
@@ -1315,24 +1363,35 @@ function App() {
       const resolvedUrls = await Promise.all(
         dedup.map((t) => resolveSoundcloudStreamUrl(t._transcodingUrl || ""))
       );
-      const payload = dedup.map((t, idx) => ({
-        provider: "soundcloud",
-        provider_track_id: `soundcloud:${String(t.providerTrackId || t.id || idx)}`,
-        title: String(t.title || "Без названия"),
-        artist: String(t.artist || "SoundCloud"),
-        cover_url: t.artwork || null,
-        audio_url: resolvedUrls[idx] || null,
-        source_url: t.link || null,
-        format: t._fromAlbum ? "SOUNDCLOUD_ALBUM" : "SOUNDCLOUD",
-        duration_sec: Math.max(0, Math.floor((t.durationMs || 0) / 1000)),
-        position: idx,
-        published_by: normalizeHandle(currentUser?.handle || currentUser?.username || "jessew1lliams")
-      }));
+      const soundcloudPayload = dedup
+        .map((t, idx) => {
+          const stream = resolvedUrls[idx] || "";
+          if (!stream) return null;
+          return {
+            provider: "soundcloud",
+            provider_track_id: `soundcloud:${String(t.providerTrackId || t.id || idx)}`,
+            title: String(t.title || "Без названия"),
+            artist: String(t.artist || "SoundCloud"),
+            cover_url: t.artwork || null,
+            audio_url: stream,
+            source_url: t.link || null,
+            format: t._fromAlbum
+              ? `SOUNDCLOUD_ALBUM|${encodeURIComponent(String(t._playlistId || "album"))}|${encodeURIComponent(String(t._playlistTitle || "Альбом"))}`
+              : "SOUNDCLOUD",
+            duration_sec: Math.max(0, Math.floor((t.durationMs || 0) / 1000)),
+            position: idx,
+            published_by: normalizeHandle(currentUser?.handle || currentUser?.username || "jessew1lliams")
+          };
+        })
+        .filter(Boolean);
+      if (!soundcloudPayload.length) {
+        throw new Error("SoundCloud не отдал поток воспроизведения ни для одного трека.");
+      }
 
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_PUBLIC_TRACKS_TABLE}`, {
         method: "POST",
         headers: { ...supabaseHeaders, Prefer: "return=representation,resolution=merge-duplicates" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(soundcloudPayload)
       });
       const raw = await insertRes.text();
       let json = [];
@@ -1340,9 +1399,9 @@ function App() {
       if (!insertRes.ok) {
         throw new Error(json?.message || raw || "Ошибка публикации каталога");
       }
-      const parsed = (Array.isArray(json) ? json : payload).map((row, idx) => mapPublicRowToTrack(row, idx)).filter((t) => t.audio || t.sourceUrl);
+      const parsed = (Array.isArray(json) ? json : soundcloudPayload).map((row, idx) => mapPublicRowToTrack(row, idx)).filter((t) => t.audio || t.sourceUrl);
       if (parsed.length) applyPublicCatalogTracks(parsed);
-      setPublicCatalogStatus(`Опубликовано в общий каталог: ${payload.length} трек(ов).`);
+      setPublicCatalogStatus(`Опубликовано в общий каталог: ${soundcloudPayload.length} трек(ов).`);
     } catch (err) {
       setPublicCatalogStatus(`Каталог: ${err.message}`);
       setSoundcloudError(`Публикация не удалась: ${err.message}`);
@@ -1954,9 +2013,6 @@ function App() {
           <button className="small-btn" onClick={() => playTrackById(track.id)} disabled={!hasPlayableAudio} title={hasPlayableAudio ? "Слушать" : "У трека нет прямого аудиопотока"}>
             Слушать
           </button>
-          {!hasPlayableAudio && track?.sourceUrl && (
-            <a className="small-btn" href={track.sourceUrl} target="_blank" rel="noreferrer">Открыть</a>
-          )}
         </div>
       </div>
     );
@@ -2037,10 +2093,55 @@ function App() {
                 <p className="muted">Пока этот раздел пустой. Позже добавим треки аккуратно, без хаоса.</p>
               </div>
             ) : (
-              <div className="card">
-                <h3 style={{ margin: 0 }}>Альбомы</h3>
-                <p className="muted">Пока этот раздел пустой. Наполним его аккуратно отдельными релизами позже.</p>
-              </div>
+              <>
+                {albumGroups.length === 0 ? (
+                  <div className="card">
+                    <h3 style={{ margin: 0 }}>Альбомы</h3>
+                    <p className="muted">Пока альбомов нет. Опубликуй SoundCloud заново, и они появятся здесь.</p>
+                  </div>
+                ) : (
+                  <div className="home-albums-layout">
+                    <div className="grid">
+                      {albumGroups.map((album) => (
+                        <div className={`card album-card ${homeAlbumKey === album.key ? "active" : ""}`} key={album.key}>
+                          <button className="album-cover-btn" onClick={() => setHomeAlbumKey(album.key)} title={album.title}>
+                            <img className="cover" src={album.cover} alt={album.title} />
+                          </button>
+                          <h3>{album.title}</h3>
+                          <p className="muted">{album.artist}</p>
+                          <span className="muted">{album.count} трек(ов)</span>
+                        </div>
+                      ))}
+                    </div>
+                    <aside className={`album-side-panel ${selectedAlbum ? "open" : ""}`}>
+                      {selectedAlbum ? (
+                        <>
+                          <img className="album-side-cover" src={selectedAlbum.cover} alt={selectedAlbum.title} />
+                          <h3 className="sub-title" style={{ marginTop: 10 }}>{selectedAlbum.title}</h3>
+                          <p className="muted" style={{ marginBottom: 8 }}>{selectedAlbum.artist}</p>
+                          <div className="album-track-list">
+                            {selectedAlbum.tracks.map((t, idx) => (
+                              <button
+                                key={t.id}
+                                className="album-track-row"
+                                onClick={() => playTrackById(t.id)}
+                                disabled={!t.audio}
+                                title={t.audio ? "Слушать" : "Трек недоступен для воспроизведения"}
+                              >
+                                <span className="album-track-index">{idx + 1}.</span>
+                                <span className="album-track-name">{t.title}</span>
+                                <span className="album-track-duration">{formatTime((t.durationSec || 0) || (t.durationMs || 0) / 1000)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <p className="muted">Выбери альбом, чтобы увидеть треки.</p>
+                      )}
+                    </aside>
+                  </div>
+                )}
+              </>
             )}
           </section>
         )}
@@ -2148,7 +2249,7 @@ function App() {
               <div className="card" style={{ marginBottom: 12 }}>
                 <h3 className="sub-title" style={{ marginTop: 0 }}>Подключения</h3>
                 <p className="muted">Управление Spotify/SoundCloud доступно только в личной админ-вкладке.</p>
-                <button className="small-btn" onClick={() => setActiveView("collection")}>Открыть подключения</button>
+                <button className="small-btn" onClick={() => setActiveView("collection")}>Подключения</button>
               </div>
             )}
             <div className="user-grid">
@@ -2266,8 +2367,7 @@ function App() {
                         <img className="cover" src={p.images?.[0]?.url || "https://placehold.co/600x600/000/fff?text=Spotify"} alt={p.name} />
                         <h3>{p.name}</h3>
                         <div className="row">
-                          <button className="small-btn" onClick={() => setSpotifyActivePlaylistId(p.id)}>Открыть</button>
-                          <a className="small-btn" href={p.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть в Spotify</a>
+                          <button className="small-btn" onClick={() => setSpotifyActivePlaylistId(p.id)}>Выбрать</button>
                         </div>
                       </div>
                     ))}
@@ -2288,7 +2388,7 @@ function App() {
                           </div>
                           <div className="row">
                             {t.preview_url && <audio controls src={t.preview_url} preload="none" />}
-                            <a className="small-btn" href={t.external_urls?.spotify} target="_blank" rel="noreferrer">Открыть</a>
+                            <span className="muted">Без внешних ссылок</span>
                           </div>
                         </div>
                       ))
@@ -2343,7 +2443,7 @@ function App() {
                     <li>Создай приложение в SoundCloud for Developers и скопируй Client ID + Client Secret.</li>
                     <li>Redirect URI в SoundCloud Dashboard должен совпадать с полем на сайте символ в символ.</li>
                     <li>Сначала нажми "Войти через SoundCloud", потом "Подключить SoundCloud".</li>
-                    <li>Для некоторых треков SoundCloud может отдать только метаданные и ссылку "Открыть".</li>
+                    <li>Для некоторых треков SoundCloud может быть недоступен поток воспроизведения.</li>
                   </ul>
                 </div>
 
@@ -2354,8 +2454,7 @@ function App() {
                         <img className="cover" src={p.artwork_url || p.user?.avatar_url || "https://placehold.co/600x600/000/fff?text=SoundCloud"} alt={p.title} />
                         <h3>{p.title}</h3>
                         <div className="row">
-                          <button className="small-btn" onClick={() => setSoundcloudActivePlaylistId(String(p.id))}>Открыть</button>
-                          {p.permalink_url && <a className="small-btn" href={p.permalink_url} target="_blank" rel="noreferrer">Открыть в SoundCloud</a>}
+                          <button className="small-btn" onClick={() => setSoundcloudActivePlaylistId(String(p.id))}>Выбрать</button>
                         </div>
                       </div>
                     ))}
@@ -2378,7 +2477,7 @@ function App() {
                             </div>
                           </div>
                           <div className="row">
-                            {t.link && <a className="small-btn" href={t.link} target="_blank" rel="noreferrer">Открыть</a>}
+                            <span className="muted">{t.link ? "Ссылка скрыта" : "Без ссылки"}</span>
                           </div>
                         </div>
                       ))
@@ -2442,7 +2541,7 @@ function App() {
                         <div className="muted">{t.artist}</div>
                       </div>
                       <div className="row">
-                        <a className="small-btn" href={t.url} target="_blank" rel="noreferrer">Открыть</a>
+                        <span className="muted">Ссылка скрыта</span>
                         <button className="small-btn" onClick={() => removeYandexTrack(t.id)}>Удалить</button>
                       </div>
                     </div>
@@ -2575,7 +2674,7 @@ function App() {
 
                 <div className="menu-block">
                   <button className="small-btn" onClick={() => setEqOpen((v) => !v)}>
-                    {eqOpen ? "Скрыть эквалайзер" : "Открыть эквалайзер"}
+                    {eqOpen ? "Скрыть эквалайзер" : "Показать эквалайзер"}
                   </button>
                 </div>
 

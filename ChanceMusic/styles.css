@@ -117,6 +117,57 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: grid;
   gap: 8px;
 }
+.home-albums-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 14px;
+  align-items: start;
+}
+.album-card.active { border-color: #fff; }
+.album-cover-btn {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.album-side-panel {
+  background: #0f0f0f;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 12px;
+  position: sticky;
+  top: 10px;
+  min-height: 260px;
+}
+.album-side-cover {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px;
+}
+.album-track-list {
+  margin-top: 8px;
+  display: grid;
+  gap: 2px;
+}
+.album-track-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  text-align: left;
+  padding: 8px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.album-track-row:hover { background: #181818; }
+.album-track-row:disabled { opacity: 0.45; cursor: not-allowed; }
+.album-track-index { color: #9a9a9a; }
+.album-track-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.album-track-duration { color: #9a9a9a; font-size: 12px; margin-left: 8px; }
 .cover { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
 .avatar { width: 56px; height: 56px; border-radius: 999px; object-fit: cover; border: 1px solid #333; }
 .role-tag { text-transform: uppercase; border: 1px solid #3a3a3a; border-radius: 999px; padding: 2px 6px; font-size: 11px; }
@@ -413,6 +464,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 @media (max-width: 1150px) {
   .app { grid-template-columns: 1fr; }
   .sidebar { border-right: 0; border-bottom: 1px solid #2a2a2a; }
+  .home-albums-layout { grid-template-columns: 1fr; }
+  .album-side-panel { position: static; }
   .player { left: 0; grid-template-columns: 1fr; gap: 8px; min-height: 148px; }
   .player-right { justify-content: flex-start; }
   .main { padding-bottom: 380px; }
