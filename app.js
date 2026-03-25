@@ -403,6 +403,7 @@ function App() {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState("");
   const [playerMenuOpen, setPlayerMenuOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
+  const [volumeIconHover, setVolumeIconHover] = useState(false);
   const [playerNotice, setPlayerNotice] = useState("");
   const [likeHover, setLikeHover] = useState(false);
 
@@ -2856,7 +2857,13 @@ function App() {
 
         <div className="player-right">
           <div className="volume-wrap" onMouseEnter={onVolumeHoverStart} onMouseLeave={onVolumeHoverEnd}>
-            <button className={`icon-btn volume-btn ${volumeOpen ? "is-open" : ""}`} type="button" title="Громкость">
+            <button
+              className={`icon-btn volume-btn ${volumeIconHover ? "is-hover" : ""}`}
+              type="button"
+              title="Громкость"
+              onMouseEnter={() => setVolumeIconHover(true)}
+              onMouseLeave={() => setVolumeIconHover(false)}
+            >
               <img className="icon-img" src={ICONS.volume} alt="Громкость" />
             </button>
             <div

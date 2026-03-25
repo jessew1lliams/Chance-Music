@@ -341,7 +341,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .like-btn-meta { margin-left: 2px; }
 .volume-wrap { position: relative; }
 .volume-btn { min-width: 36px; min-height: 36px; opacity: 0.96; }
-.volume-btn.is-open .icon-img {
+.volume-btn.is-hover .icon-img {
   opacity: 0.32;
   transform: scale(0.96);
   filter: saturate(0.8);
