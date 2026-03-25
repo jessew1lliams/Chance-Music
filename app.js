@@ -459,6 +459,7 @@ function App() {
   const soundcloudWidgetApiPromiseRef = useRef(null);
   const soundcloudWidgetDurationRef = useRef(0);
   const soundcloudWidgetTrackUrlRef = useRef("");
+  const volumeRef = useRef(0.8);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
   const eqGainRef = useRef(null);
@@ -836,6 +837,10 @@ function App() {
     if (!data) return;
     safeSetLocalStorage(STORAGE_KEY, JSON.stringify(data, null, 2));
   }, [data]);
+
+  useEffect(() => {
+    volumeRef.current = volume;
+  }, [volume]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -1252,13 +1257,17 @@ function App() {
       const widget = window.SC.Widget(iframe);
       soundcloudWidgetRef.current = widget;
       widget.bind(window.SC.Widget.Events.READY, () => {
+        try { widget.setVolume(Math.max(0, Math.min(100, Math.round(volumeRef.current * 100)))); } catch {}
         widget.getDuration((ms) => {
           const sec = Math.max(0, Number(ms || 0) / 1000);
           soundcloudWidgetDurationRef.current = sec;
           if (sec > 0) setDuration(sec);
         });
       });
-      widget.bind(window.SC.Widget.Events.PLAY, () => setIsPlaying(true));
+      widget.bind(window.SC.Widget.Events.PLAY, () => {
+        try { widget.setVolume(Math.max(0, Math.min(100, Math.round(volumeRef.current * 100)))); } catch {}
+        setIsPlaying(true);
+      });
       widget.bind(window.SC.Widget.Events.PAUSE, () => setIsPlaying(false));
       widget.bind(window.SC.Widget.Events.FINISH, () => {
         setIsPlaying(false);
@@ -2860,8 +2869,11 @@ function App() {
                 min="0"
                 max="1"
                 step="0.01"
-                value={volume}
-                onChange={(e) => setVolume(Number(e.target.value))}
+                value={1 - volume}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setVolume(Math.max(0, Math.min(1, 1 - n)));
+                }}
               />
             </div>
           </div>

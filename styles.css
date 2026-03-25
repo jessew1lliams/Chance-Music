@@ -364,6 +364,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .volume-slider {
   -webkit-appearance: none;
   appearance: none;
+  direction: rtl;
   width: 104px;
   height: 4px;
   background: transparent;
