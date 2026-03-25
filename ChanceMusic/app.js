@@ -449,6 +449,10 @@ function App() {
   const [publicCatalogLoading, setPublicCatalogLoading] = useState(false);
   const [publicCatalogStatus, setPublicCatalogStatus] = useState("");
   const audioRef = useRef(null);
+  const soundcloudWidgetIframeRef = useRef(null);
+  const soundcloudWidgetRef = useRef(null);
+  const soundcloudWidgetApiPromiseRef = useRef(null);
+  const soundcloudWidgetDurationRef = useRef(0);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
   const eqGainRef = useRef(null);
@@ -458,6 +462,12 @@ function App() {
   const supabaseSchemaRef = useRef("auto");
   const usersRef = useRef(users);
   const soundcloudAutoPublishRef = useRef("");
+
+  const isWidgetSoundcloudTrack = (track) => {
+    if (!track) return false;
+    const fmt = String(track.format || "").toUpperCase();
+    return Boolean(!track.audio && track.sourceUrl && fmt.includes("SOUNDCLOUD"));
+  };
 
   const currentUser = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session]);
   const profileUser = useMemo(() => {
@@ -1201,6 +1211,65 @@ function App() {
     }
   };
 
+  const ensureSoundcloudWidgetApi = () => {
+    if (window.SC?.Widget) return Promise.resolve();
+    if (soundcloudWidgetApiPromiseRef.current) return soundcloudWidgetApiPromiseRef.current;
+    soundcloudWidgetApiPromiseRef.current = new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-sc-widget-api="1"]');
+      const onLoad = () => resolve();
+      const onError = () => reject(new Error("Не удалось загрузить SoundCloud Widget API."));
+      if (existing) {
+        existing.addEventListener("load", onLoad, { once: true });
+        existing.addEventListener("error", onError, { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://w.soundcloud.com/player/api.js";
+      script.async = true;
+      script.dataset.scWidgetApi = "1";
+      script.addEventListener("load", onLoad, { once: true });
+      script.addEventListener("error", onError, { once: true });
+      document.head.appendChild(script);
+    });
+    return soundcloudWidgetApiPromiseRef.current;
+  };
+
+  const ensureSoundcloudWidget = async () => {
+    await ensureSoundcloudWidgetApi();
+    const iframe = soundcloudWidgetIframeRef.current;
+    if (!iframe || !window.SC?.Widget) return null;
+    if (!soundcloudWidgetRef.current) {
+      const widget = window.SC.Widget(iframe);
+      soundcloudWidgetRef.current = widget;
+      widget.bind(window.SC.Widget.Events.READY, () => {
+        widget.getDuration((ms) => {
+          const sec = Math.max(0, Number(ms || 0) / 1000);
+          soundcloudWidgetDurationRef.current = sec;
+          if (sec > 0) setDuration(sec);
+        });
+      });
+      widget.bind(window.SC.Widget.Events.PLAY, () => setIsPlaying(true));
+      widget.bind(window.SC.Widget.Events.PAUSE, () => setIsPlaying(false));
+      widget.bind(window.SC.Widget.Events.FINISH, () => {
+        setIsPlaying(false);
+        setProgress(0);
+      });
+      widget.bind(window.SC.Widget.Events.PLAY_PROGRESS, (e) => {
+        const current = Math.max(0, Number(e?.currentPosition || 0) / 1000);
+        setProgress(current);
+        const known = soundcloudWidgetDurationRef.current;
+        if (known <= 0 && Number(e?.relativePosition) > 0) {
+          const inferred = current / Number(e.relativePosition);
+          if (Number.isFinite(inferred) && inferred > 0) {
+            soundcloudWidgetDurationRef.current = inferred;
+            setDuration(inferred);
+          }
+        }
+      });
+    }
+    return soundcloudWidgetRef.current;
+  };
+
   const startSoundcloudLogin = async () => {
     const clientId = soundcloudClientId.trim();
     const clientSecret = soundcloudClientSecret.trim();
@@ -1925,6 +1994,40 @@ function App() {
     const target = tracks.find((t) => t.id === id);
     if (!target) return;
     setCurrentTrackId(id);
+    if (isWidgetSoundcloudTrack(target)) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      setIsPlaying(false);
+      setProgress(0);
+      setDuration(0);
+      soundcloudWidgetDurationRef.current = 0;
+      setPlayerNotice("Трек проигрывается через скрытый SoundCloud-движок, управление в нашем плеере.");
+      (async () => {
+        try {
+          const widget = await ensureSoundcloudWidget();
+          if (!widget) throw new Error("Widget недоступен");
+          widget.load(target.sourceUrl, {
+            auto_play: true,
+            hide_related: true,
+            show_comments: false,
+            show_user: false,
+            show_reposts: false,
+            show_teaser: false,
+            visual: false
+          });
+          setIsPlaying(true);
+        } catch (err) {
+          setPlayerNotice(`SoundCloud playback error: ${err.message}`);
+        }
+      })();
+      return;
+    }
+    if (soundcloudWidgetRef.current) {
+      try { soundcloudWidgetRef.current.pause(); } catch {}
+    }
+    setPlayerNotice("");
     setTimeout(() => {
       if (!audioRef.current) return;
       ensureAudioGraph();
@@ -1935,6 +2038,17 @@ function App() {
   };
 
   const onPlayPause = () => {
+    if (isWidgetSoundcloudTrack(currentTrack)) {
+      (async () => {
+        try {
+          const widget = await ensureSoundcloudWidget();
+          if (!widget) return;
+          if (isPlaying) widget.pause();
+          else widget.play();
+        } catch {}
+      })();
+      return;
+    }
     if (!audioRef.current || !currentTrack) return;
     ensureAudioGraph();
     if (isPlaying) {
@@ -1959,6 +2073,17 @@ function App() {
   };
 
   const onStop = () => {
+    if (isWidgetSoundcloudTrack(currentTrack)) {
+      if (soundcloudWidgetRef.current) {
+        try {
+          soundcloudWidgetRef.current.pause();
+          soundcloudWidgetRef.current.seekTo(0);
+        } catch {}
+      }
+      setIsPlaying(false);
+      setProgress(0);
+      return;
+    }
     if (!audioRef.current) return;
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
@@ -2037,7 +2162,7 @@ function App() {
   if (!data) return <div className="main">Загрузка...</div>;
 
   const TrackCard = ({ track }) => {
-    const hasPlayableAudio = Boolean(track?.audio);
+    const hasPlayableAudio = Boolean(track?.audio || isWidgetSoundcloudTrack(track));
     return (
       <div className="card">
         <img className="cover" src={track.cover} alt={track.title} />
@@ -2159,8 +2284,8 @@ function App() {
                                 key={t.id}
                                 className="album-track-row"
                                 onClick={() => playTrackById(t.id)}
-                                disabled={!Boolean(t.audio)}
-                                title={Boolean(t.audio) ? "Слушать" : "Трек недоступен для воспроизведения"}
+                                disabled={!Boolean(t.audio || isWidgetSoundcloudTrack(t))}
+                                title={Boolean(t.audio || isWidgetSoundcloudTrack(t)) ? "Слушать" : "Трек недоступен для воспроизведения"}
                               >
                                 <span className="album-track-index">{idx + 1}.</span>
                                 <span className="album-track-name">{t.title}</span>
@@ -2587,6 +2712,13 @@ function App() {
         )}
       </main>
 
+      <iframe
+        ref={soundcloudWidgetIframeRef}
+        title="soundcloud-widget-engine"
+        className="soundcloud-widget-hidden"
+        src="about:blank"
+      />
+
       <footer className="player">
         <div className="player-progress-wrap">
           <input
@@ -2600,7 +2732,13 @@ function App() {
             onChange={(e) => {
               const n = Number(e.target.value);
               setProgress(n);
-              if (audioRef.current) audioRef.current.currentTime = n;
+              if (isWidgetSoundcloudTrack(currentTrack)) {
+                if (soundcloudWidgetRef.current) {
+                  try { soundcloudWidgetRef.current.seekTo(Math.max(0, Math.floor(n * 1000))); } catch {}
+                }
+              } else if (audioRef.current) {
+                audioRef.current.currentTime = n;
+              }
             }}
           />
           <div className="progress-times">

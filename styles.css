@@ -226,6 +226,17 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: 12px;
 }
 
+.soundcloud-widget-hidden {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  left: -9999px;
+  top: -9999px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+}
+
 .player {
   --player-pad-x: 14px;
   position: fixed;
