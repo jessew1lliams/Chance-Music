@@ -219,6 +219,12 @@ function normalizeHandle(raw) {
 
 function mapPublicRowToTrack(row, fallbackIdx = 0) {
   const idCore = String(row?.provider_track_id || row?.id || `track_${fallbackIdx}`);
+  const rawFormat = String(row?.format || "SOUNDCLOUD");
+  const [baseFormat, albumIdEncoded = "", albumTitleEncoded = ""] = rawFormat.split("|");
+  let albumId = "";
+  let albumTitle = "";
+  try { albumId = albumIdEncoded ? decodeURIComponent(albumIdEncoded) : ""; } catch { albumId = albumIdEncoded; }
+  try { albumTitle = albumTitleEncoded ? decodeURIComponent(albumTitleEncoded) : ""; } catch { albumTitle = albumTitleEncoded; }
   return {
     id: `pub_${idCore}`,
     title: String(row?.title || "Без названия"),
@@ -228,8 +234,10 @@ function mapPublicRowToTrack(row, fallbackIdx = 0) {
     releaseDate: "2026-03-01",
     isUpcoming: false,
     liked: false,
-    format: String(row?.format || "SOUNDCLOUD").toUpperCase(),
-    sourceUrl: row?.source_url || ""
+    format: String(baseFormat || "SOUNDCLOUD").toUpperCase(),
+    sourceUrl: row?.source_url || "",
+    albumId,
+    albumTitle
   };
 }
 
@@ -344,6 +352,7 @@ function App() {
   const [routeProfileSlug, setRouteProfileSlug] = useState(() => parseHashRoute().profileSlug);
   const [query, setQuery] = useState("");
   const [homeTab, setHomeTab] = useState("tracks");
+  const [homeAlbumKey, setHomeAlbumKey] = useState("");
 
   const [users, setUsers] = useState(() => loadUsers());
   const [session, setSession] = useState(() => {
@@ -459,6 +468,34 @@ function App() {
     }),
     [tracks]
   );
+  const albumGroups = useMemo(() => {
+    const groups = new Map();
+    tracks.forEach((t) => {
+      const fmt = String(t?.format || "").toUpperCase();
+      if (!fmt.includes("ALBUM")) return;
+      const key = String(t?.albumId || "");
+      if (!key) return;
+      const prev = groups.get(key);
+      if (prev) {
+        prev.tracks.push(t);
+      } else {
+        groups.set(key, {
+          key,
+          title: String(t?.albumTitle || "Альбом"),
+          artist: String(t?.artist || "Unknown Artist"),
+          cover: t?.cover || "https://placehold.co/900x900/000/fff?text=Album",
+          tracks: [t]
+        });
+      }
+    });
+    return Array.from(groups.values())
+      .map((g) => ({ ...g, count: g.tracks.length }))
+      .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title, "ru"));
+  }, [tracks]);
+  const selectedAlbum = useMemo(
+    () => albumGroups.find((a) => a.key === homeAlbumKey) || null,
+    [albumGroups, homeAlbumKey]
+  );
   const playlists = data?.playlists || [];
   const trackIndex = tracks.findIndex((t) => t.id === currentTrackId);
   const currentTrack = tracks[trackIndex] || tracks[0] || null;
@@ -470,6 +507,15 @@ function App() {
     if (exists) return;
     setCurrentTrackId(mainTracks[0]?.id || tracks[0]?.id || null);
   }, [tracks, currentTrackId, mainTracks]);
+
+  useEffect(() => {
+    if (!albumGroups.length) {
+      if (homeAlbumKey) setHomeAlbumKey("");
+      return;
+    }
+    const exists = albumGroups.some((a) => a.key === homeAlbumKey);
+    if (!exists) setHomeAlbumKey(albumGroups[0].key);
+  }, [albumGroups, homeAlbumKey]);
 
   const applyPublicCatalogTracks = (catalogTracks = [], silent = false) => {
     if (!Array.isArray(catalogTracks) || !catalogTracks.length) return;
@@ -1323,7 +1369,9 @@ function App() {
         cover_url: t.artwork || null,
         audio_url: resolvedUrls[idx] || null,
         source_url: t.link || null,
-        format: t._fromAlbum ? "SOUNDCLOUD_ALBUM" : "SOUNDCLOUD",
+        format: t._fromAlbum
+          ? `SOUNDCLOUD_ALBUM|${encodeURIComponent(String(t._playlistId || "album"))}|${encodeURIComponent(String(t._playlistTitle || "Альбом"))}`
+          : "SOUNDCLOUD",
         duration_sec: Math.max(0, Math.floor((t.durationMs || 0) / 1000)),
         position: idx,
         published_by: normalizeHandle(currentUser?.handle || currentUser?.username || "jessew1lliams")
@@ -2037,10 +2085,38 @@ function App() {
                 <p className="muted">Пока этот раздел пустой. Позже добавим треки аккуратно, без хаоса.</p>
               </div>
             ) : (
-              <div className="card">
-                <h3 style={{ margin: 0 }}>Альбомы</h3>
-                <p className="muted">Пока этот раздел пустой. Наполним его аккуратно отдельными релизами позже.</p>
-              </div>
+              <>
+                {albumGroups.length === 0 ? (
+                  <div className="card">
+                    <h3 style={{ margin: 0 }}>Альбомы</h3>
+                    <p className="muted">Пока альбомов нет. Опубликуй SoundCloud заново, и они появятся здесь.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid">
+                      {albumGroups.map((album) => (
+                        <div className="card" key={album.key}>
+                          <img className="cover" src={album.cover} alt={album.title} />
+                          <h3>{album.title}</h3>
+                          <p className="muted">{album.artist}</p>
+                          <div className="row">
+                            <button className={`small-btn ${homeAlbumKey === album.key ? "active" : ""}`} onClick={() => setHomeAlbumKey(album.key)}>
+                              Открыть альбом
+                            </button>
+                            <span className="muted">{album.count} трек(ов)</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedAlbum && (
+                      <div style={{ marginTop: 14 }}>
+                        <h3 className="sub-title">{selectedAlbum.title}</h3>
+                        <div className="grid">{selectedAlbum.tracks.map((t) => <TrackCard key={t.id} track={t} />)}</div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
             )}
           </section>
         )}
