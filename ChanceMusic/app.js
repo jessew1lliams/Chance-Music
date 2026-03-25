@@ -2856,7 +2856,7 @@ function App() {
 
         <div className="player-right">
           <div className="volume-wrap" onMouseEnter={onVolumeHoverStart} onMouseLeave={onVolumeHoverEnd}>
-            <button className="icon-btn volume-btn" type="button" title="Громкость">
+            <button className={`icon-btn volume-btn ${volumeOpen ? "is-open" : ""}`} type="button" title="Громкость">
               <img className="icon-img" src={ICONS.volume} alt="Громкость" />
             </button>
             <div
