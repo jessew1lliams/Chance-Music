@@ -50,6 +50,7 @@ const ICONS = {
   prev: "./icons/icon_prev.svg",
   next: "./icons/icon_next.svg",
   volume: "./icons/icon_volume.svg",
+  volumePoint: "./icons/icon_volume_ point.svg",
   more: "./icons/icon_more.svg",
   likeOutline: "./icons/icon_like_outline.svg",
   likeFilled: "./icons/icon_like_filled.svg",
@@ -2870,6 +2871,7 @@ function App() {
                 max="1"
                 step="0.01"
                 value={1 - volume}
+                style={{ "--volume-thumb-icon": `url('${ICONS.volumePoint}')` }}
                 onChange={(e) => {
                   const n = Number(e.target.value);
                   setVolume(Math.max(0, Math.min(1, 1 - n)));
