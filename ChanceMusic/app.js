@@ -1169,6 +1169,29 @@ function App() {
     }
   };
 
+  const resolveSoundcloudStreamFallbackByTrackId = async (trackIdRaw) => {
+    const trackId = String(trackIdRaw || "").trim();
+    const clientId = soundcloudClientId.trim();
+    if (!trackId || !clientId) return "";
+    try {
+      const res = await fetch(`https://api-v2.soundcloud.com/tracks/${encodeURIComponent(trackId)}/stream?client_id=${encodeURIComponent(clientId)}`, {
+        method: "GET",
+        redirect: "follow"
+      });
+      if (!res.ok) return "";
+      const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+      if (contentType.includes("application/json")) {
+        const raw = await res.text();
+        let json = {};
+        try { json = raw ? JSON.parse(raw) : {}; } catch { json = {}; }
+        return String(json?.url || "");
+      }
+      return String(res.url || "");
+    } catch {
+      return "";
+    }
+  };
+
   const startSoundcloudLogin = async () => {
     const clientId = soundcloudClientId.trim();
     const clientSecret = soundcloudClientSecret.trim();
@@ -1363,9 +1386,12 @@ function App() {
       const resolvedUrls = await Promise.all(
         dedup.map((t) => resolveSoundcloudStreamUrl(t._transcodingUrl || ""))
       );
+      const fallbackUrls = await Promise.all(
+        dedup.map((t) => resolveSoundcloudStreamFallbackByTrackId(t.providerTrackId || t.id))
+      );
       const soundcloudPayload = dedup
         .map((t, idx) => {
-          const stream = resolvedUrls[idx] || "";
+          const stream = resolvedUrls[idx] || fallbackUrls[idx] || "";
           if (!stream) return null;
           return {
             provider: "soundcloud",
@@ -1385,7 +1411,9 @@ function App() {
         })
         .filter(Boolean);
       if (!soundcloudPayload.length) {
-        throw new Error("SoundCloud не отдал поток воспроизведения ни для одного трека.");
+        setPublicCatalogStatus(`Каталог: SoundCloud не отдал поток воспроизведения. Доступных треков: 0 из ${dedup.length}.`);
+        setSoundcloudError("Публикация: у треков нет доступного потока для веб-плеера.");
+        return;
       }
 
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_PUBLIC_TRACKS_TABLE}`, {
@@ -1401,7 +1429,8 @@ function App() {
       }
       const parsed = (Array.isArray(json) ? json : soundcloudPayload).map((row, idx) => mapPublicRowToTrack(row, idx)).filter((t) => t.audio || t.sourceUrl);
       if (parsed.length) applyPublicCatalogTracks(parsed);
-      setPublicCatalogStatus(`Опубликовано в общий каталог: ${soundcloudPayload.length} трек(ов).`);
+      const skipped = Math.max(0, dedup.length - soundcloudPayload.length);
+      setPublicCatalogStatus(`Опубликовано в общий каталог: ${soundcloudPayload.length} трек(ов).${skipped ? ` Пропущено без потока: ${skipped}.` : ""}`);
     } catch (err) {
       setPublicCatalogStatus(`Каталог: ${err.message}`);
       setSoundcloudError(`Публикация не удалась: ${err.message}`);
