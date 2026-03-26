@@ -306,6 +306,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 .player-left, .player-center, .player-right { display: flex; align-items: center; gap: 8px; }
 .player-left { justify-content: flex-start; }
+.player-left { grid-column: 1; }
 .player-cover { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; }
 .player-meta { display: grid; gap: 3px; }
 .player-title-row { display: flex; align-items: center; gap: 8px; }
@@ -343,7 +344,14 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .play-icon-img { width: 30px; height: 30px; }
 .player-time-left { text-align: center; font-size: 12px; margin-top: 1px; }
 
-.player-right { justify-content: flex-end; position: relative; gap: 10px; justify-self: end; width: 100%; }
+.player-right {
+  grid-column: 3;
+  justify-content: flex-end;
+  position: relative;
+  gap: 10px;
+  justify-self: stretch;
+  width: 100%;
+}
 .like-btn { position: relative; width: 28px; height: 28px; min-width: 28px; min-height: 28px; }
 .like-icon-layer {
   position: absolute;
