@@ -1012,7 +1012,7 @@ function App() {
     if (volumeHideTimerRef.current) clearTimeout(volumeHideTimerRef.current);
     volumeHideTimerRef.current = setTimeout(() => {
       setVolumeOpen(false);
-    }, 520);
+    }, 820);
   };
   const spotifyApi = async (path) => {
     if (!spotifyToken?.accessToken) throw new Error("Нет токена Spotify");
