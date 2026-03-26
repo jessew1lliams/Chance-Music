@@ -468,12 +468,16 @@ function App() {
   const soundcloudWidgetDurationRef = useRef(0);
   const soundcloudWidgetTrackUrlRef = useRef("");
   const volumeRef = useRef(0.8);
+  const progressRef = useRef(0);
+  const durationRef = useRef(0);
   const progressInputRef = useRef(null);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
   const eqGainRef = useRef(null);
   const analyserRef = useRef(null);
   const analyserDataRef = useRef(null);
+  const waveformPeaksRef = useRef([]);
+  const waveformPeakMaxRef = useRef(1);
   const playerMenuRef = useRef(null);
   const volumeHideTimerRef = useRef(null);
   const volumeVizRafRef = useRef(0);
@@ -885,6 +889,14 @@ function App() {
   }, [volume]);
 
   useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
+
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
+
+  useEffect(() => {
     volumePulseRef.current = volumePulse;
   }, [volumePulse]);
 
@@ -954,9 +966,27 @@ function App() {
     }
     const tick = (ts) => {
       let targetPulse = 0;
-      const analyser = analyserRef.current;
-      const data = analyserDataRef.current;
-      if (analyser && data) {
+      const waveformPeaks = waveformPeaksRef.current;
+      const liveProgress = progressRef.current;
+      const liveDuration = durationRef.current;
+      if (waveformPeaks.length && liveDuration > 0) {
+        const ratio = Math.min(1, Math.max(0, liveProgress / liveDuration));
+        const center = Math.floor(ratio * (waveformPeaks.length - 1));
+        const from = Math.max(0, center - 2);
+        const to = Math.min(waveformPeaks.length - 1, center + 2);
+        let sum = 0;
+        let count = 0;
+        for (let i = from; i <= to; i += 1) {
+          sum += waveformPeaks[i];
+          count += 1;
+        }
+        const avg = count ? (sum / count) : 0;
+        const normalized = avg / (waveformPeakMaxRef.current || 1);
+        targetPulse = Math.min(1, Math.max(0, normalized * 1.55));
+      } else {
+        const analyser = analyserRef.current;
+        const data = analyserDataRef.current;
+        if (analyser && data) {
         analyser.getByteFrequencyData(data);
         const lowBins = Math.min(20, data.length);
         let lowSum = 0;
@@ -969,8 +999,9 @@ function App() {
         const midAvg = (midEnd - midStart) ? (midSum / (midEnd - midStart)) / 255 : 0;
         const kick = Math.max(0, lowAvg - midAvg * 0.72);
         targetPulse = Math.min(1, Math.max(0, lowAvg * 1.2 + kick * 1.8 - 0.08));
-      } else {
-        targetPulse = 0.08 + 0.06 * (1 + Math.sin(ts / 130));
+        } else {
+          targetPulse = 0.08 + 0.06 * (1 + Math.sin(ts / 130));
+        }
       }
       const next = volumePulseRef.current * 0.72 + targetPulse * 0.28;
       if (Math.abs(next - volumePulseRef.current) > 0.008) setVolumePulse(next);
@@ -1212,6 +1243,7 @@ function App() {
     title: t.title || "Без названия",
     artist: t.user?.username || soundcloudUser?.username || "SoundCloud",
     artwork: toSoundcloudHighCover(t.artwork_url || t.user?.avatar_url) || "https://placehold.co/600x600/000/fff?text=SoundCloud",
+    waveformUrl: t.waveform_url || "",
     link: t.permalink_url || t.uri,
     durationMs: t.duration || 0,
     streamUrl: "",
@@ -2104,6 +2136,49 @@ function App() {
     return "";
   };
 
+  const resetWaveformModel = () => {
+    waveformPeaksRef.current = [];
+    waveformPeakMaxRef.current = 1;
+  };
+
+  const loadSoundcloudWaveformForTrack = async (track) => {
+    try {
+      resetWaveformModel();
+      let waveformUrl = String(track?.waveformUrl || "").trim();
+      if (!waveformUrl && track?.sourceUrl && soundcloudToken?.accessToken) {
+        try {
+          const resolved = await soundcloudApi("/resolve", { url: String(track.sourceUrl) });
+          waveformUrl = String(resolved?.waveform_url || "").trim();
+        } catch {}
+      }
+      if (!waveformUrl) return;
+      const jsonUrl = waveformUrl.endsWith(".png")
+        ? waveformUrl.replace(/\.png(\?.*)?$/i, ".json$1")
+        : waveformUrl;
+      const res = await fetch(jsonUrl);
+      if (!res.ok) return;
+      const raw = await res.text();
+      let payload = null;
+      try { payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
+      if (!payload) return;
+      const arr = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.samples)
+          ? payload.samples
+          : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.points)
+              ? payload.points
+              : [];
+      const peaks = arr
+        .map((v) => Number(v))
+        .filter((v) => Number.isFinite(v) && v >= 0);
+      if (!peaks.length) return;
+      waveformPeaksRef.current = peaks;
+      waveformPeakMaxRef.current = peaks.reduce((m, v) => (v > m ? v : m), 0) || 1;
+    } catch {}
+  };
+
   const playNativeAudioUrl = (url) => {
     if (!audioRef.current) return;
     if (soundcloudWidgetRef.current) {
@@ -2121,6 +2196,7 @@ function App() {
   const playTrackById = (id, queueIds = null) => {
     const target = tracks.find((t) => String(t.id) === String(id));
     if (!target) return;
+    resetWaveformModel();
     if (Array.isArray(queueIds) && queueIds.length) {
       const normalizedQueue = queueIds.map((x) => String(x));
       const nextIdx = normalizedQueue.findIndex((qid) => qid === String(id));
@@ -2131,6 +2207,9 @@ function App() {
       if (nextIdx >= 0) setPlaybackQueueIndex(nextIdx);
     }
     setCurrentTrackId(normalizeTrackId(id));
+    if (String(target?.format || "").toUpperCase().includes("SOUNDCLOUD")) {
+      loadSoundcloudWaveformForTrack(target);
+    }
     if (isWidgetSoundcloudTrack(target)) {
       const trackIdRaw = getSoundcloudTrackIdFromTrack(target);
       if (trackIdRaw) {
