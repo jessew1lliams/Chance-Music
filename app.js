@@ -1274,6 +1274,7 @@ function App() {
       widget.bind(window.SC.Widget.Events.FINISH, () => {
         setIsPlaying(false);
         setProgress(0);
+        playNextTrack(true);
       });
       widget.bind(window.SC.Widget.Events.PLAY_PROGRESS, (e) => {
         const current = Math.max(0, Number(e?.currentPosition || 0) / 1000);
@@ -2119,16 +2120,30 @@ function App() {
     if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
   };
 
-  const playPrevTrack = () => {
-    if (!tracks.length) return;
-    const prevIndex = trackIndex <= 0 ? tracks.length - 1 : trackIndex - 1;
-    playTrackById(tracks[prevIndex].id);
+  const resolvePlaybackQueue = () => {
+    if (!tracks.length) return [];
+    if (selectedAlbum?.tracks?.length) {
+      const inAlbum = selectedAlbum.tracks.some((t) => t.id === currentTrackId);
+      if (inAlbum) return selectedAlbum.tracks;
+    }
+    return tracks;
   };
 
-  const playNextTrack = () => {
-    if (!tracks.length) return;
-    const nextIndex = trackIndex >= tracks.length - 1 ? 0 : trackIndex + 1;
-    playTrackById(tracks[nextIndex].id);
+  const playPrevTrack = () => {
+    const queue = resolvePlaybackQueue();
+    if (!queue.length) return;
+    const idx = queue.findIndex((t) => t.id === currentTrackId);
+    const prevIndex = idx <= 0 ? queue.length - 1 : idx - 1;
+    playTrackById(queue[prevIndex].id);
+  };
+
+  const playNextTrack = (auto = false) => {
+    const queue = resolvePlaybackQueue();
+    if (!queue.length) return;
+    const idx = queue.findIndex((t) => t.id === currentTrackId);
+    const nextIndex = idx < 0 || idx >= queue.length - 1 ? 0 : idx + 1;
+    playTrackById(queue[nextIndex].id);
+    if (auto) setPlayerNotice("");
   };
 
   const onStop = () => {
@@ -2789,7 +2804,7 @@ function App() {
             step="0.1"
             value={progress}
             style={{ background: `linear-gradient(to right, #a8a8a8 0%, #a8a8a8 ${progressPercent}%, #2d2d2d ${progressPercent}%, #2d2d2d 100%)` }}
-            onChange={(e) => {
+            onInput={(e) => {
               const n = Number(e.target.value);
               setProgress(n);
               if (isWidgetSoundcloudTrack(currentTrack)) {
@@ -2799,6 +2814,10 @@ function App() {
               } else if (audioRef.current) {
                 audioRef.current.currentTime = n;
               }
+            }}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              setProgress(n);
             }}
           />
           <div className="progress-times">
@@ -2994,6 +3013,7 @@ function App() {
           onEnded={() => {
             setIsPlaying(false);
             setProgress(duration || 0);
+            playNextTrack(true);
           }}
         />
       </footer>
