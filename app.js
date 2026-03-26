@@ -394,6 +394,7 @@ function App() {
 
   const [currentTrackId, setCurrentTrackId] = useState(null);
   const [playbackQueueIds, setPlaybackQueueIds] = useState([]);
+  const [playbackQueueIndex, setPlaybackQueueIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -2048,7 +2049,13 @@ function App() {
     const target = tracks.find((t) => String(t.id) === String(id));
     if (!target) return;
     if (Array.isArray(queueIds) && queueIds.length) {
-      setPlaybackQueueIds(queueIds.map((x) => String(x)));
+      const normalizedQueue = queueIds.map((x) => String(x));
+      const nextIdx = normalizedQueue.findIndex((qid) => qid === String(id));
+      setPlaybackQueueIds(normalizedQueue);
+      setPlaybackQueueIndex(nextIdx >= 0 ? nextIdx : 0);
+    } else if (Array.isArray(playbackQueueIds) && playbackQueueIds.length) {
+      const nextIdx = playbackQueueIds.findIndex((qid) => qid === String(id));
+      if (nextIdx >= 0) setPlaybackQueueIndex(nextIdx);
     }
     setCurrentTrackId(normalizeTrackId(id));
     if (isWidgetSoundcloudTrack(target)) {
@@ -2172,17 +2179,21 @@ function App() {
   const playPrevTrack = () => {
     const queue = resolvePlaybackQueue();
     if (!queue.length) return;
-    const idx = queue.findIndex((t) => String(t.id) === String(currentTrackId));
+    const idIndex = queue.findIndex((t) => String(t.id) === String(currentTrackId));
+    const idx = idIndex >= 0 ? idIndex : (playbackQueueIndex >= 0 ? playbackQueueIndex : 0);
     const prevIndex = idx <= 0 ? queue.length - 1 : idx - 1;
-    playTrackById(queue[prevIndex].id);
+    setPlaybackQueueIndex(prevIndex);
+    playTrackById(queue[prevIndex].id, queue.map((t) => t.id));
   };
 
   const playNextTrack = (auto = false) => {
     const queue = resolvePlaybackQueue();
     if (!queue.length) return;
-    const idx = queue.findIndex((t) => String(t.id) === String(currentTrackId));
+    const idIndex = queue.findIndex((t) => String(t.id) === String(currentTrackId));
+    const idx = idIndex >= 0 ? idIndex : (playbackQueueIndex >= 0 ? playbackQueueIndex : 0);
     const nextIndex = idx < 0 || idx >= queue.length - 1 ? 0 : idx + 1;
-    playTrackById(queue[nextIndex].id);
+    setPlaybackQueueIndex(nextIndex);
+    playTrackById(queue[nextIndex].id, queue.map((t) => t.id));
     if (auto) setPlayerNotice("");
   };
 
