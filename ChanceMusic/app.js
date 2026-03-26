@@ -1316,11 +1316,17 @@ function App() {
         const current = Math.max(0, Number(e?.currentPosition || 0) / 1000);
         setProgress(current);
         const known = soundcloudWidgetDurationRef.current;
-        if (known <= 0 && Number(e?.relativePosition) > 0) {
-          const inferred = current / Number(e.relativePosition);
+        const rp = Number(e?.relativePosition || 0);
+        if (rp > 0.001) {
+          const inferred = current / rp;
           if (Number.isFinite(inferred) && inferred > 0) {
-            soundcloudWidgetDurationRef.current = inferred;
-            setDuration(inferred);
+            const shouldUpdate =
+              known <= 0 ||
+              Math.abs(inferred - known) > 1.2;
+            if (shouldUpdate) {
+              soundcloudWidgetDurationRef.current = inferred;
+              setDuration(inferred);
+            }
           }
         }
       });
@@ -3085,10 +3091,27 @@ function App() {
           crossOrigin="anonymous"
           src={currentTrack?.audio || ""}
           onLoadedMetadata={(e) => {
-            setDuration(e.currentTarget.duration || 0);
+            const mediaDuration = Math.max(0, Number(e.currentTarget.duration || 0));
+            const catalogDuration = Math.max(
+              0,
+              Number(currentTrack?.durationSec || 0) || Number(currentTrack?.durationMs || 0) / 1000 || 0
+            );
+            setDuration(Math.max(mediaDuration, catalogDuration));
             setProgress(0);
           }}
-          onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime || 0)}
+          onTimeUpdate={(e) => {
+            const current = Math.max(0, Number(e.currentTarget.currentTime || 0));
+            setProgress(current);
+            const mediaDuration = Math.max(0, Number(e.currentTarget.duration || 0));
+            const catalogDuration = Math.max(
+              0,
+              Number(currentTrack?.durationSec || 0) || Number(currentTrack?.durationMs || 0) / 1000 || 0
+            );
+            const nextDuration = Math.max(mediaDuration, catalogDuration, current);
+            if (Number.isFinite(nextDuration) && nextDuration > 0 && Math.abs(nextDuration - duration) > 0.8) {
+              setDuration(nextDuration);
+            }
+          }}
           onEnded={() => {
             setIsPlaying(false);
             setProgress(duration || 0);
