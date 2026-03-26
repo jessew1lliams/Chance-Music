@@ -528,7 +528,7 @@ function App() {
     [albumGroups, homeAlbumKey]
   );
   const playlists = data?.playlists || [];
-  const trackIndex = tracks.findIndex((t) => t.id === currentTrackId);
+  const trackIndex = tracks.findIndex((t) => String(t.id) === String(currentTrackId));
   const currentTrack = tracks[trackIndex] || tracks[0] || null;
   const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
 
@@ -2014,12 +2014,12 @@ function App() {
   const myFriends = useMemo(() => users.filter((u) => currentUser?.friends.includes(u.id)), [users, currentUser]);
 
   const playTrackById = (id, queueIds = null) => {
-    const target = tracks.find((t) => t.id === id);
+    const target = tracks.find((t) => String(t.id) === String(id));
     if (!target) return;
     if (Array.isArray(queueIds) && queueIds.length) {
       setPlaybackQueueIds(queueIds.map((x) => String(x)));
     }
-    setCurrentTrackId(id);
+    setCurrentTrackId(String(id));
     if (isWidgetSoundcloudTrack(target)) {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -2128,11 +2128,11 @@ function App() {
       const byQueue = playbackQueueIds
         .map((qid) => tracks.find((t) => String(t.id) === String(qid)))
         .filter(Boolean);
-      const inQueue = byQueue.some((t) => t.id === currentTrackId);
+      const inQueue = byQueue.some((t) => String(t.id) === String(currentTrackId));
       if (inQueue && byQueue.length) return byQueue;
     }
     if (selectedAlbum?.tracks?.length) {
-      const inAlbum = selectedAlbum.tracks.some((t) => t.id === currentTrackId);
+      const inAlbum = selectedAlbum.tracks.some((t) => String(t.id) === String(currentTrackId));
       if (inAlbum) return selectedAlbum.tracks;
     }
     return tracks;
@@ -2141,7 +2141,7 @@ function App() {
   const playPrevTrack = () => {
     const queue = resolvePlaybackQueue();
     if (!queue.length) return;
-    const idx = queue.findIndex((t) => t.id === currentTrackId);
+    const idx = queue.findIndex((t) => String(t.id) === String(currentTrackId));
     const prevIndex = idx <= 0 ? queue.length - 1 : idx - 1;
     playTrackById(queue[prevIndex].id);
   };
@@ -2149,7 +2149,7 @@ function App() {
   const playNextTrack = (auto = false) => {
     const queue = resolvePlaybackQueue();
     if (!queue.length) return;
-    const idx = queue.findIndex((t) => t.id === currentTrackId);
+    const idx = queue.findIndex((t) => String(t.id) === String(currentTrackId));
     const nextIndex = idx < 0 || idx >= queue.length - 1 ? 0 : idx + 1;
     playTrackById(queue[nextIndex].id);
     if (auto) setPlayerNotice("");
