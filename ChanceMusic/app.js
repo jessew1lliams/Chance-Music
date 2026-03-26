@@ -476,6 +476,7 @@ function App() {
   const supabaseSchemaRef = useRef("auto");
   const usersRef = useRef(users);
   const soundcloudAutoPublishRef = useRef("");
+  const playNextTrackRef = useRef(null);
 
   const isWidgetSoundcloudTrack = (track) => {
     if (!track) return false;
@@ -1307,7 +1308,9 @@ function App() {
       widget.bind(window.SC.Widget.Events.FINISH, () => {
         setIsPlaying(false);
         setProgress(0);
-        playNextTrack(true);
+        if (typeof playNextTrackRef.current === "function") {
+          playNextTrackRef.current(true);
+        }
       });
       widget.bind(window.SC.Widget.Events.PLAY_PROGRESS, (e) => {
         const current = Math.max(0, Number(e?.currentPosition || 0) / 1000);
@@ -2196,6 +2199,10 @@ function App() {
     playTrackById(queue[nextIndex].id, queue.map((t) => t.id));
     if (auto) setPlayerNotice("");
   };
+
+  useEffect(() => {
+    playNextTrackRef.current = playNextTrack;
+  }, [playNextTrack]);
 
   const onStop = () => {
     if (isWidgetSoundcloudTrack(currentTrack)) {
