@@ -396,6 +396,7 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [progressBarWidth, setProgressBarWidth] = useState(0);
   const [volume, setVolume] = useState(() => {
     const raw = Number(localStorage.getItem(PLAYER_VOLUME_KEY) || "0.8");
     if (!Number.isFinite(raw)) return 0.8;
@@ -463,6 +464,7 @@ function App() {
   const soundcloudWidgetDurationRef = useRef(0);
   const soundcloudWidgetTrackUrlRef = useRef("");
   const volumeRef = useRef(0.8);
+  const progressInputRef = useRef(null);
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
   const eqGainRef = useRef(null);
@@ -530,7 +532,18 @@ function App() {
   const playlists = data?.playlists || [];
   const trackIndex = tracks.findIndex((t) => String(t.id) === String(currentTrackId));
   const currentTrack = tracks[trackIndex] || tracks[0] || null;
-  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
+  const progressVisualPercent = useMemo(() => {
+    if (duration <= 0) return 0;
+    const raw = Math.min(1, Math.max(0, progress / duration));
+    if (raw <= 0) return 0;
+    if (raw >= 1) return 100;
+    const thumbPx = 9;
+    const width = Number(progressBarWidth || 0);
+    if (width <= thumbPx + 1) return raw * 100;
+    const usable = width - thumbPx;
+    const centerPx = raw * usable + (thumbPx / 2);
+    return Math.min(100, Math.max(0, (centerPx / width) * 100));
+  }, [progress, duration, progressBarWidth]);
 
   useEffect(() => {
     if (!tracks.length) return;
@@ -538,6 +551,23 @@ function App() {
     if (exists) return;
     setCurrentTrackId(mainTracks[0]?.id || tracks[0]?.id || null);
   }, [tracks, currentTrackId, mainTracks]);
+
+  useEffect(() => {
+    const el = progressInputRef.current;
+    if (!el) return undefined;
+    const update = () => setProgressBarWidth(el.clientWidth || 0);
+    update();
+    let ro = null;
+    if (window.ResizeObserver) {
+      ro = new ResizeObserver(() => update());
+      ro.observe(el);
+    }
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      if (ro) ro.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (!albumGroups.length) {
@@ -2826,13 +2856,14 @@ function App() {
       <footer className="player">
         <div className="player-progress-wrap">
           <input
+            ref={progressInputRef}
             className="progress"
             type="range"
             min="0"
             max={duration || 0}
             step="0.1"
             value={progress}
-            style={{ background: `linear-gradient(to right, #a8a8a8 0%, #a8a8a8 ${progressPercent}%, #2d2d2d ${progressPercent}%, #2d2d2d 100%)` }}
+            style={{ background: `linear-gradient(to right, #a8a8a8 0%, #a8a8a8 ${progressVisualPercent}%, #2d2d2d ${progressVisualPercent}%, #2d2d2d 100%)` }}
             onInput={(e) => {
               const n = Number(e.target.value);
               setProgress(n);
