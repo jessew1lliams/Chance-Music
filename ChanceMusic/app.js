@@ -392,6 +392,7 @@ function App() {
   const [isMobileClient, setIsMobileClient] = useState(() => detectMobileClient());
 
   const [currentTrackId, setCurrentTrackId] = useState(null);
+  const [playbackQueueIds, setPlaybackQueueIds] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -2012,9 +2013,12 @@ function App() {
 
   const myFriends = useMemo(() => users.filter((u) => currentUser?.friends.includes(u.id)), [users, currentUser]);
 
-  const playTrackById = (id) => {
+  const playTrackById = (id, queueIds = null) => {
     const target = tracks.find((t) => t.id === id);
     if (!target) return;
+    if (Array.isArray(queueIds) && queueIds.length) {
+      setPlaybackQueueIds(queueIds.map((x) => String(x)));
+    }
     setCurrentTrackId(id);
     if (isWidgetSoundcloudTrack(target)) {
       if (audioRef.current) {
@@ -2120,6 +2124,13 @@ function App() {
 
   const resolvePlaybackQueue = () => {
     if (!tracks.length) return [];
+    if (Array.isArray(playbackQueueIds) && playbackQueueIds.length) {
+      const byQueue = playbackQueueIds
+        .map((qid) => tracks.find((t) => String(t.id) === String(qid)))
+        .filter(Boolean);
+      const inQueue = byQueue.some((t) => t.id === currentTrackId);
+      if (inQueue && byQueue.length) return byQueue;
+    }
     if (selectedAlbum?.tracks?.length) {
       const inAlbum = selectedAlbum.tracks.some((t) => t.id === currentTrackId);
       if (inAlbum) return selectedAlbum.tracks;
@@ -2233,19 +2244,19 @@ function App() {
 
   if (!data) return <div className="main">Загрузка...</div>;
 
-  const TrackCard = ({ track }) => {
+  const TrackCard = ({ track, queueIds = [] }) => {
     const hasPlayableAudio = Boolean(track?.audio || isWidgetSoundcloudTrack(track));
     return (
       <div
         className="card"
         role="button"
         tabIndex={0}
-        onClick={() => { if (hasPlayableAudio) playTrackById(track.id); }}
+        onClick={() => { if (hasPlayableAudio) playTrackById(track.id, queueIds); }}
         onKeyDown={(e) => {
           if (!hasPlayableAudio) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            playTrackById(track.id);
+            playTrackById(track.id, queueIds);
           }
         }}
       >
@@ -2257,7 +2268,7 @@ function App() {
             className="small-btn"
             onClick={(e) => {
               e.stopPropagation();
-              playTrackById(track.id);
+              playTrackById(track.id, queueIds);
             }}
             disabled={!hasPlayableAudio}
             title={hasPlayableAudio ? "Слушать" : "У трека нет прямого аудиопотока"}
@@ -2307,7 +2318,7 @@ function App() {
             {query.trim() && (
               <>
                 <h3 className="sub-title">Треки</h3>
-                <div className="grid">{filteredTracks.map((t) => <TrackCard key={t.id} track={t} />)}</div>
+                <div className="grid">{filteredTracks.map((t) => <TrackCard key={t.id} track={t} queueIds={filteredTracks.map((x) => x.id)} />)}</div>
                 <h3 className="sub-title" style={{ marginTop: 16 }}>Пользователи</h3>
                 <div className="user-grid">
                   {filteredUsers.map((u) => (
@@ -2375,7 +2386,7 @@ function App() {
                               <button
                                 key={t.id}
                                 className="album-track-row"
-                                onClick={() => playTrackById(t.id)}
+                                onClick={() => playTrackById(t.id, selectedAlbum.tracks.map((x) => x.id))}
                                 disabled={!Boolean(t.audio || isWidgetSoundcloudTrack(t))}
                                 title={Boolean(t.audio || isWidgetSoundcloudTrack(t)) ? "Слушать" : "Трек недоступен для воспроизведения"}
                               >
