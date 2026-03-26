@@ -395,11 +395,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
   top: 50%;
   width: 10px;
   height: 10px;
-  transform: translate(-50%, -50%) scale(calc(1 + (var(--vol-pulse, 0) * 0.95)));
+  transform: translate(-50%, -50%) scale(calc(1 + (var(--vol-pulse, 0) * 1.8)));
   opacity: 1;
   pointer-events: none;
   z-index: 2;
-  filter: drop-shadow(0 0 calc(2px + (var(--vol-pulse, 0) * 8px)) rgba(255,255,255,0.45));
+  filter: drop-shadow(0 0 calc(2px + (var(--vol-pulse, 0) * 14px)) rgba(255,255,255,0.6));
   transition: opacity .22s ease, transform .08s linear, filter .08s linear;
 }
 .volume-btn.is-hover .icon-img {

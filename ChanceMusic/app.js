@@ -2145,6 +2145,19 @@ function App() {
     try {
       resetWaveformModel();
       let waveformUrl = String(track?.waveformUrl || "").trim();
+      const providerId = getSoundcloudTrackIdFromTrack(track);
+      const scClientId = String(soundcloudClientId || "").trim();
+      if (!waveformUrl && providerId && scClientId && /^\d+$/.test(providerId)) {
+        try {
+          const infoRes = await fetch(`https://api-v2.soundcloud.com/tracks/${encodeURIComponent(providerId)}?client_id=${encodeURIComponent(scClientId)}`);
+          if (infoRes.ok) {
+            const infoRaw = await infoRes.text();
+            let infoJson = null;
+            try { infoJson = infoRaw ? JSON.parse(infoRaw) : null; } catch { infoJson = null; }
+            waveformUrl = String(infoJson?.waveform_url || "").trim();
+          }
+        } catch {}
+      }
       if (!waveformUrl && track?.sourceUrl && soundcloudToken?.accessToken) {
         try {
           const resolved = await soundcloudApi("/resolve", { url: String(track.sourceUrl) });
