@@ -2032,7 +2032,7 @@ function App() {
           if (!widget) throw new Error("Widget недоступен");
           soundcloudWidgetTrackUrlRef.current = target.sourceUrl;
           widget.load(target.sourceUrl, {
-            auto_play: false,
+            auto_play: true,
             hide_related: true,
             show_comments: false,
             show_user: false,
@@ -2044,9 +2044,6 @@ function App() {
             try { widget.setVolume(Math.max(0, Math.min(100, Math.round(volume * 100)))); } catch {}
           }, 120);
           setTimeout(() => {
-            try { widget.play(); } catch {}
-          }, 250);
-          setTimeout(() => {
             try { widget.getDuration((ms) => {
               const sec = Math.max(0, Number(ms || 0) / 1000);
               if (sec > 0) {
@@ -2054,7 +2051,7 @@ function App() {
                 setDuration(sec);
               }
             }); } catch {}
-          }, 450);
+          }, 350);
         } catch (err) {
           setPlayerNotice(`SoundCloud playback error: ${err.message}`);
         }
@@ -2069,6 +2066,7 @@ function App() {
       if (!audioRef.current) return;
       ensureAudioGraph();
       audioRef.current.volume = volume;
+      audioRef.current.src = target.audio || "";
       audioRef.current.load();
       audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
       if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
@@ -2238,12 +2236,32 @@ function App() {
   const TrackCard = ({ track }) => {
     const hasPlayableAudio = Boolean(track?.audio || isWidgetSoundcloudTrack(track));
     return (
-      <div className="card">
+      <div
+        className="card"
+        role="button"
+        tabIndex={0}
+        onClick={() => { if (hasPlayableAudio) playTrackById(track.id); }}
+        onKeyDown={(e) => {
+          if (!hasPlayableAudio) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            playTrackById(track.id);
+          }
+        }}
+      >
         <img className="cover" src={track.cover} alt={track.title} />
         <h3>{track.title}</h3>
         <p className="muted">{track.artist}</p>
         <div className="row">
-          <button className="small-btn" onClick={() => playTrackById(track.id)} disabled={!hasPlayableAudio} title={hasPlayableAudio ? "Слушать" : "У трека нет прямого аудиопотока"}>
+          <button
+            className="small-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              playTrackById(track.id);
+            }}
+            disabled={!hasPlayableAudio}
+            title={hasPlayableAudio ? "Слушать" : "У трека нет прямого аудиопотока"}
+          >
             Слушать
           </button>
         </div>
