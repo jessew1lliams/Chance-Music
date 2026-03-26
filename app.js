@@ -408,6 +408,7 @@ function App() {
   const [playerMenuOpen, setPlayerMenuOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [volumeIconHover, setVolumeIconHover] = useState(false);
+  const [volumePulse, setVolumePulse] = useState(0);
   const [playerNotice, setPlayerNotice] = useState("");
   const [likeHover, setLikeHover] = useState(false);
 
@@ -470,8 +471,12 @@ function App() {
   const audioCtxRef = useRef(null);
   const eqFiltersRef = useRef([]);
   const eqGainRef = useRef(null);
+  const analyserRef = useRef(null);
+  const analyserDataRef = useRef(null);
   const playerMenuRef = useRef(null);
   const volumeHideTimerRef = useRef(null);
+  const volumeVizRafRef = useRef(0);
+  const volumePulseRef = useRef(0);
   const hashSyncRef = useRef(false);
   const supabaseSchemaRef = useRef("auto");
   const usersRef = useRef(users);
@@ -879,6 +884,10 @@ function App() {
   }, [volume]);
 
   useEffect(() => {
+    volumePulseRef.current = volumePulse;
+  }, [volumePulse]);
+
+  useEffect(() => {
     if (!audioRef.current) return;
     audioRef.current.volume = volume;
     if (soundcloudWidgetRef.current) {
@@ -901,6 +910,8 @@ function App() {
           audioCtxRef.current = null;
           eqFiltersRef.current = [];
           eqGainRef.current = null;
+          analyserRef.current = null;
+          analyserDataRef.current = null;
           setEqEnabled(false);
           setEqOpen(false);
           setPlayerNotice("Эквалайзер отключен для внешнего трека, чтобы воспроизведение работало без тишины.");
@@ -914,6 +925,9 @@ function App() {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       const source = ctx.createMediaElementSource(audioRef.current);
       const master = ctx.createGain();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.78;
       master.gain.value = Math.pow(10, eqLevelDb / 20);
       source.connect(master);
       let prev = master;
@@ -926,10 +940,13 @@ function App() {
         prev = f;
         return f;
       });
-      prev.connect(ctx.destination);
+      prev.connect(analyser);
+      analyser.connect(ctx.destination);
       audioCtxRef.current = ctx;
       eqFiltersRef.current = filters;
       eqGainRef.current = master;
+      analyserRef.current = analyser;
+      analyserDataRef.current = new Uint8Array(analyser.frequencyBinCount);
       setPlayerNotice("");
       return true;
     } catch (err) {
@@ -937,12 +954,56 @@ function App() {
       audioCtxRef.current = null;
       eqFiltersRef.current = [];
       eqGainRef.current = null;
+      analyserRef.current = null;
+      analyserDataRef.current = null;
       setEqEnabled(false);
       setEqOpen(false);
       setPlayerNotice("Эквалайзер отключен для этого трека (ограничение CORS), но воспроизведение работает.");
       return false;
     }
   };
+
+  useEffect(() => {
+    if (volumeVizRafRef.current) {
+      cancelAnimationFrame(volumeVizRafRef.current);
+      volumeVizRafRef.current = 0;
+    }
+    if (!isPlaying) {
+      setVolumePulse(0);
+      return;
+    }
+    const tick = (ts) => {
+      let targetPulse = 0;
+      const analyser = analyserRef.current;
+      const data = analyserDataRef.current;
+      if (analyser && data) {
+        analyser.getByteFrequencyData(data);
+        const lowBins = Math.min(20, data.length);
+        let lowSum = 0;
+        let midSum = 0;
+        const midStart = Math.min(20, data.length);
+        const midEnd = Math.min(120, data.length);
+        for (let i = 0; i < lowBins; i += 1) lowSum += data[i];
+        for (let i = midStart; i < midEnd; i += 1) midSum += data[i];
+        const lowAvg = lowBins ? (lowSum / lowBins) / 255 : 0;
+        const midAvg = (midEnd - midStart) ? (midSum / (midEnd - midStart)) / 255 : 0;
+        const kick = Math.max(0, lowAvg - midAvg * 0.72);
+        targetPulse = Math.min(1, Math.max(0, lowAvg * 1.2 + kick * 1.8 - 0.08));
+      } else {
+        targetPulse = 0.08 + 0.06 * (1 + Math.sin(ts / 130));
+      }
+      const next = volumePulseRef.current * 0.72 + targetPulse * 0.28;
+      if (Math.abs(next - volumePulseRef.current) > 0.008) setVolumePulse(next);
+      volumeVizRafRef.current = requestAnimationFrame(tick);
+    };
+    volumeVizRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (volumeVizRafRef.current) {
+        cancelAnimationFrame(volumeVizRafRef.current);
+        volumeVizRafRef.current = 0;
+      }
+    };
+  }, [isPlaying, currentTrackId]);
 
   useEffect(() => {
     if (!eqFiltersRef.current.length || !audioCtxRef.current) return;
@@ -2967,6 +3028,7 @@ function App() {
               title="Громкость"
               onMouseEnter={() => setVolumeIconHover(true)}
               onMouseLeave={() => setVolumeIconHover(false)}
+              style={{ "--vol-pulse": volumePulse }}
             >
               <img className="icon-img volume-base-icon" src={ICONS.volume} alt="Громкость" />
               <img className="volume-center-point" src={ICONS.volumePoint} alt="" aria-hidden="true" />
