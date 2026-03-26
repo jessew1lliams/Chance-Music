@@ -359,6 +359,7 @@ function Nick({ user }) {
 }
 
 function App() {
+  const normalizeTrackId = (id) => (id == null ? null : String(id));
   const [data, setData] = useState(null);
   const [activeView, setActiveView] = useState(() => parseHashRoute().view);
   const [viewedProfileId, setViewedProfileId] = useState(null);
@@ -547,9 +548,9 @@ function App() {
 
   useEffect(() => {
     if (!tracks.length) return;
-    const exists = tracks.some((t) => t.id === currentTrackId);
+    const exists = tracks.some((t) => String(t.id) === String(currentTrackId));
     if (exists) return;
-    setCurrentTrackId(mainTracks[0]?.id || tracks[0]?.id || null);
+    setCurrentTrackId(normalizeTrackId(mainTracks[0]?.id || tracks[0]?.id || null));
   }, [tracks, currentTrackId, mainTracks]);
 
   useEffect(() => {
@@ -599,7 +600,7 @@ function App() {
         user: { ...(source.user || {}), collectionTrackIds: mergedTracks.map((t) => t.id) }
       };
     });
-    setCurrentTrackId((prev) => prev || catalogTracks[0]?.id || null);
+    setCurrentTrackId((prev) => normalizeTrackId(prev || catalogTracks[0]?.id || null));
     if (!silent) setPublicCatalogStatus(`Общий каталог обновлен: ${catalogTracks.length} трек(ов).`);
   };
 
@@ -848,7 +849,7 @@ function App() {
         const parsed = JSON.parse(fromStorage);
         const normalized = normalizeAppData(parsed);
         setData(normalized);
-        setCurrentTrackId(normalized.tracks?.[0]?.id || null);
+        setCurrentTrackId(normalizeTrackId(normalized.tracks?.[0]?.id || null));
         return;
       } catch {}
     }
@@ -857,12 +858,12 @@ function App() {
       .then((json) => {
         const normalized = normalizeAppData(json);
         setData(normalized);
-        setCurrentTrackId(normalized.tracks?.[0]?.id || null);
+        setCurrentTrackId(normalizeTrackId(normalized.tracks?.[0]?.id || null));
       })
       .catch(() => {
         const normalized = normalizeAppData({});
         setData(normalized);
-        setCurrentTrackId(normalized.tracks?.[0]?.id || null);
+        setCurrentTrackId(normalizeTrackId(normalized.tracks?.[0]?.id || null));
       });
   }, []);
 
@@ -2049,7 +2050,7 @@ function App() {
     if (Array.isArray(queueIds) && queueIds.length) {
       setPlaybackQueueIds(queueIds.map((x) => String(x)));
     }
-    setCurrentTrackId(String(id));
+    setCurrentTrackId(normalizeTrackId(id));
     if (isWidgetSoundcloudTrack(target)) {
       if (audioRef.current) {
         audioRef.current.pause();
