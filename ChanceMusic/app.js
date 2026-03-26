@@ -2864,7 +2864,8 @@ function App() {
               onMouseEnter={() => setVolumeIconHover(true)}
               onMouseLeave={() => setVolumeIconHover(false)}
             >
-              <img className="icon-img" src={ICONS.volume} alt="Громкость" />
+              <img className="icon-img volume-base-icon" src={ICONS.volume} alt="Громкость" />
+              <img className="volume-center-point" src={ICONS.volumePoint} alt="" aria-hidden="true" />
             </button>
             <div
               className={`volume-pop ${volumeOpen ? "open" : ""}`}

@@ -340,12 +340,37 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .like-btn .icon-img { width: 22px; height: 22px; }
 .like-btn-meta { margin-left: 2px; }
 .volume-wrap { position: relative; }
-.volume-btn { min-width: 36px; min-height: 36px; opacity: 0.96; }
+.volume-btn {
+  position: relative;
+  min-width: 36px;
+  min-height: 36px;
+  opacity: 0.96;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.volume-base-icon { width: 22px; height: 22px; }
+.volume-center-point {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity .22s ease, transform .22s ease;
+}
 .volume-btn.is-hover .icon-img {
   opacity: 0.32;
   transform: scale(0.96);
   filter: saturate(0.8);
   transition: opacity .2s ease, transform .2s ease, filter .2s ease;
+}
+.volume-btn.is-hover .volume-center-point {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.84);
 }
 .volume-pop {
   position: absolute;
