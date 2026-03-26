@@ -315,7 +315,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -1px);
+  transform: translate(-50%, -9px);
   flex-direction: row;
   align-items: center;
   justify-content: center;
