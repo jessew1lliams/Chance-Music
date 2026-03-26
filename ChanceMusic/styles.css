@@ -305,22 +305,24 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .progress-times { display: none; }
 
 .player-left, .player-center, .player-right { display: flex; align-items: center; gap: 8px; }
+.player-left { justify-content: flex-start; }
 .player-cover { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; }
 .player-meta { display: grid; gap: 3px; }
 .player-title-row { display: flex; align-items: center; gap: 8px; }
 .player-title { font-weight: 700; }
 .player-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  position: static;
+  left: auto;
+  transform: none;
   flex-direction: row;
   align-items: center;
   justify-content: center;
   min-height: 0;
-  width: max-content;
+  width: 100%;
+  justify-self: center;
   padding-inline: 0;
 }
-.controls.centered-controls { display: flex; justify-content: center; gap: 14px; }
+.controls.centered-controls { display: flex; justify-content: center; align-items: center; gap: 16px; margin: 0 auto; }
 .track-nav-btn { min-width: 36px; min-height: 36px; opacity: 0.92; }
 .nav-icon-img { width: 22px; height: 22px; }
 .icon-btn { border: 0; background: transparent; color: #fff; min-width: 44px; min-height: 36px; cursor: pointer; padding: 0; }
@@ -339,7 +341,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .play-icon-img { width: 30px; height: 30px; }
 .player-time-left { text-align: center; font-size: 12px; margin-top: 1px; }
 
-.player-right { justify-content: flex-end; position: relative; gap: 10px; }
+.player-right { justify-content: flex-end; position: relative; gap: 10px; justify-self: end; width: 100%; }
 .like-btn { position: relative; width: 28px; height: 28px; min-width: 28px; min-height: 28px; }
 .like-icon-layer {
   position: absolute;
