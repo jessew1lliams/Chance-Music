@@ -327,7 +327,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .controls.centered-controls { display: flex; justify-content: center; align-items: center; gap: 16px; margin: 0 auto; }
 .controls.centered-controls .track-nav-btn:first-child {
-  margin-right: -20px;
+  margin-right: -17px;
 }
 .track-nav-btn { min-width: 36px; min-height: 36px; opacity: 0.92; }
 .nav-icon-img { width: 22px; height: 22px; }
