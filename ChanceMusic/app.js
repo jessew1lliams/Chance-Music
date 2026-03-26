@@ -239,6 +239,7 @@ function mapPublicRowToTrack(row, fallbackIdx = 0) {
     liked: false,
     format: String(baseFormat || "SOUNDCLOUD").toUpperCase(),
     sourceUrl: row?.source_url || "",
+    providerTrackId: String(row?.provider_track_id || "").replace(/^soundcloud:/i, ""),
     albumId,
     albumTitle
   };
@@ -898,27 +899,6 @@ function App() {
 
   const ensureAudioGraph = () => {
     if (!audioRef.current) return false;
-    try {
-      const src = currentTrack?.audio || audioRef.current.currentSrc || audioRef.current.src || "";
-      if (src) {
-        const parsed = new URL(src, window.location.href);
-        const isCrossOrigin = parsed.origin !== window.location.origin;
-        if (isCrossOrigin) {
-          if (audioCtxRef.current) {
-            audioCtxRef.current.close().catch(() => {});
-          }
-          audioCtxRef.current = null;
-          eqFiltersRef.current = [];
-          eqGainRef.current = null;
-          analyserRef.current = null;
-          analyserDataRef.current = null;
-          setEqEnabled(false);
-          setEqOpen(false);
-          setPlayerNotice("Эквалайзер отключен для внешнего трека, чтобы воспроизведение работало без тишины.");
-          return false;
-        }
-      }
-    } catch (_) {}
     if (audioCtxRef.current) return true;
     let ctx = null;
     try {
@@ -2115,6 +2095,29 @@ function App() {
 
   const myFriends = useMemo(() => users.filter((u) => currentUser?.friends.includes(u.id)), [users, currentUser]);
 
+  const getSoundcloudTrackIdFromTrack = (track) => {
+    const fromProvider = String(track?.providerTrackId || "").trim();
+    if (fromProvider) return fromProvider.replace(/^soundcloud:/i, "");
+    const fromId = String(track?.id || "").trim();
+    const m = fromId.match(/^pub_soundcloud:(.+)$/i);
+    if (m && m[1]) return String(m[1]).replace(/^soundcloud:/i, "");
+    return "";
+  };
+
+  const playNativeAudioUrl = (url) => {
+    if (!audioRef.current) return;
+    if (soundcloudWidgetRef.current) {
+      try { soundcloudWidgetRef.current.pause(); } catch {}
+    }
+    setPlayerNotice("");
+    ensureAudioGraph();
+    audioRef.current.volume = volume;
+    audioRef.current.src = url || "";
+    audioRef.current.load();
+    audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
+  };
+
   const playTrackById = (id, queueIds = null) => {
     const target = tracks.find((t) => String(t.id) === String(id));
     if (!target) return;
@@ -2129,6 +2132,68 @@ function App() {
     }
     setCurrentTrackId(normalizeTrackId(id));
     if (isWidgetSoundcloudTrack(target)) {
+      const trackIdRaw = getSoundcloudTrackIdFromTrack(target);
+      if (trackIdRaw) {
+        (async () => {
+          try {
+            const direct = await resolveSoundcloudStreamFallbackByTrackId(trackIdRaw);
+            if (direct) {
+              setData((prev) => {
+                const source = prev || normalizeAppData({});
+                return {
+                  ...source,
+                  tracks: (source.tracks || []).map((t) => (
+                    String(t.id) === String(target.id) ? { ...t, audio: direct } : t
+                  ))
+                };
+              });
+              setPlayerNotice("Прямой поток SoundCloud подключен: визуализатор работает стабильнее.");
+              setProgress(0);
+              playNativeAudioUrl(direct);
+              return;
+            }
+          } catch {}
+          // fallback to widget below when direct stream is unavailable
+          if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+          }
+          setIsPlaying(false);
+          setProgress(0);
+          setDuration(0);
+          soundcloudWidgetDurationRef.current = 0;
+          setPlayerNotice("Трек проигрывается через скрытый SoundCloud-движок, управление в нашем плеере.");
+          try {
+            const widget = await ensureSoundcloudWidget();
+            if (!widget) throw new Error("Widget недоступен");
+            soundcloudWidgetTrackUrlRef.current = target.sourceUrl;
+            widget.load(target.sourceUrl, {
+              auto_play: true,
+              hide_related: true,
+              show_comments: false,
+              show_user: false,
+              show_reposts: false,
+              show_teaser: false,
+              visual: false
+            });
+            setTimeout(() => {
+              try { widget.setVolume(Math.max(0, Math.min(100, Math.round(volume * 100)))); } catch {}
+            }, 120);
+            setTimeout(() => {
+              try { widget.getDuration((ms) => {
+                const sec = Math.max(0, Number(ms || 0) / 1000);
+                if (sec > 0) {
+                  soundcloudWidgetDurationRef.current = sec;
+                  setDuration(sec);
+                }
+              }); } catch {}
+            }, 350);
+          } catch (err) {
+            setPlayerNotice(`SoundCloud playback error: ${err.message}`);
+          }
+        })();
+        return;
+      }
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -2175,13 +2240,7 @@ function App() {
     }
     setPlayerNotice("");
     setTimeout(() => {
-      if (!audioRef.current) return;
-      ensureAudioGraph();
-      audioRef.current.volume = volume;
-      audioRef.current.src = target.audio || "";
-      audioRef.current.load();
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-      if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
+      playNativeAudioUrl(target.audio || "");
     }, 0);
   };
 
