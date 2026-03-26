@@ -2904,7 +2904,7 @@ function App() {
         </div>
 
         <div className="player-right">
-          <div className="volume-wrap" onMouseEnter={onVolumeHoverStart} onMouseLeave={onVolumeHoverEnd}>
+          <div className={`volume-wrap ${volumeOpen ? "is-open" : ""}`} onMouseEnter={onVolumeHoverStart} onMouseLeave={onVolumeHoverEnd}>
             <button
               className={`icon-btn volume-btn ${volumeIconHover ? "is-hover" : ""}`}
               type="button"

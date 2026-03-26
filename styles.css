@@ -311,16 +311,18 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .player-title-row { display: flex; align-items: center; gap: 8px; }
 .player-title { font-weight: 700; }
 .player-center {
-  position: static;
-  left: auto;
-  transform: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -1px);
   flex-direction: row;
   align-items: center;
   justify-content: center;
   min-height: 0;
-  width: 100%;
-  justify-self: center;
+  width: max-content;
+  justify-self: auto;
   padding-inline: 0;
+  z-index: 4;
 }
 .controls.centered-controls { display: flex; justify-content: center; align-items: center; gap: 16px; margin: 0 auto; }
 .track-nav-btn { min-width: 36px; min-height: 36px; opacity: 0.92; }
@@ -386,6 +388,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   transition: opacity .2s ease, transform .2s ease, filter .2s ease;
 }
 .volume-btn.is-hover .volume-center-point {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.84);
+}
+.volume-wrap.is-open .volume-center-point {
   opacity: 0;
   transform: translate(-50%, -50%) scale(0.84);
 }
@@ -558,6 +564,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .home-albums-layout { grid-template-columns: 1fr; }
   .album-side-panel { position: static; }
   .player { left: 0; grid-template-columns: 1fr; gap: 8px; min-height: 148px; }
+  .player-center { position: static; left: auto; top: auto; transform: none; width: 100%; justify-self: center; }
   .player-right { justify-content: flex-start; }
   .main { padding-bottom: 380px; }
   .eq-grid { grid-template-columns: repeat(5, minmax(26px, 1fr)); }
