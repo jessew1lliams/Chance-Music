@@ -28,6 +28,7 @@ const SOUNDCLOUD_VERIFIER_KEY = "chance_music_soundcloud_verifier_v1";
 const SOUNDCLOUD_STATE_KEY = "chance_music_soundcloud_state_v1";
 const YANDEX_SETTINGS_KEY = "chance_music_yandex_settings_v1";
 const PLAYER_VOLUME_KEY = "chance_music_player_volume_v1";
+const PLAYER_RESUME_KEY = "chance_music_player_resume_v1";
 
 const SAMPLE_TRACK = {
   id: "demo-track-1",
@@ -461,6 +462,18 @@ function App() {
   const [supabaseStatus, setSupabaseStatus] = useState("");
   const [publicCatalogLoading, setPublicCatalogLoading] = useState(false);
   const [publicCatalogStatus, setPublicCatalogStatus] = useState("");
+  const [resumeState, setResumeState] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(PLAYER_RESUME_KEY) || "null");
+      if (!raw || !raw.trackId) return { trackId: null, progress: 0 };
+      return {
+        trackId: String(raw.trackId),
+        progress: Math.max(0, Number(raw.progress || 0))
+      };
+    } catch {
+      return { trackId: null, progress: 0 };
+    }
+  });
   const audioRef = useRef(null);
   const soundcloudWidgetIframeRef = useRef(null);
   const soundcloudWidgetRef = useRef(null);
@@ -489,6 +502,8 @@ function App() {
   const usersRef = useRef(users);
   const soundcloudAutoPublishRef = useRef("");
   const playNextTrackRef = useRef(null);
+  const resumeAppliedRef = useRef(false);
+  const lastResumeSaveRef = useRef(0);
 
   const isWidgetSoundcloudTrack = (track) => {
     if (!track) return false;
@@ -562,10 +577,20 @@ function App() {
 
   useEffect(() => {
     if (!tracks.length) return;
+    if (!resumeAppliedRef.current && resumeState?.trackId) {
+      const restored = tracks.find((t) => String(t.id) === String(resumeState.trackId));
+      if (restored) {
+        setCurrentTrackId(String(restored.id));
+        setProgress(Math.max(0, Number(resumeState.progress || 0)));
+        resumeAppliedRef.current = true;
+        return;
+      }
+      resumeAppliedRef.current = true;
+    }
     const exists = tracks.some((t) => String(t.id) === String(currentTrackId));
     if (exists) return;
     setCurrentTrackId(normalizeTrackId(mainTracks[0]?.id || tracks[0]?.id || null));
-  }, [tracks, currentTrackId, mainTracks]);
+  }, [tracks, currentTrackId, mainTracks, resumeState]);
 
   useEffect(() => {
     const el = progressInputRef.current;
@@ -889,6 +914,18 @@ function App() {
   useEffect(() => {
     volumeRef.current = volume;
   }, [volume]);
+
+  useEffect(() => {
+    const now = Date.now();
+    if (now - lastResumeSaveRef.current < 700) return;
+    lastResumeSaveRef.current = now;
+    const payload = {
+      trackId: currentTrackId ? String(currentTrackId) : null,
+      progress: Math.max(0, Number(progress || 0)),
+      updatedAt: now
+    };
+    safeSetLocalStorage(PLAYER_RESUME_KEY, JSON.stringify(payload));
+  }, [currentTrackId, progress]);
 
   useEffect(() => {
     progressRef.current = progress;
@@ -2224,6 +2261,12 @@ function App() {
     if (audioCtxRef.current?.state === "suspended") audioCtxRef.current.resume().catch(() => {});
   };
 
+  const getResumeProgressForTrack = (trackId) => {
+    if (!resumeState?.trackId) return 0;
+    if (String(resumeState.trackId) !== String(trackId)) return 0;
+    return Math.max(0, Number(resumeState.progress || 0));
+  };
+
   const playTrackById = (id, queueIds = null) => {
     const target = tracks.find((t) => String(t.id) === String(id));
     if (!target) return;
@@ -2277,6 +2320,7 @@ function App() {
             const widget = await ensureSoundcloudWidget();
             if (!widget) throw new Error("Widget недоступен");
             soundcloudWidgetTrackUrlRef.current = target.sourceUrl;
+            const resumeSec = getResumeProgressForTrack(target.id);
             widget.load(target.sourceUrl, {
               auto_play: true,
               hide_related: true,
@@ -2289,6 +2333,11 @@ function App() {
             setTimeout(() => {
               try { widget.setVolume(Math.max(0, Math.min(100, Math.round(volume * 100)))); } catch {}
             }, 120);
+            if (resumeSec > 0.5) {
+              setTimeout(() => {
+                try { widget.seekTo(Math.max(0, Math.floor(resumeSec * 1000))); } catch {}
+              }, 260);
+            }
             setTimeout(() => {
               try { widget.getDuration((ms) => {
                 const sec = Math.max(0, Number(ms || 0) / 1000);
@@ -2318,6 +2367,7 @@ function App() {
           const widget = await ensureSoundcloudWidget();
           if (!widget) throw new Error("Widget недоступен");
           soundcloudWidgetTrackUrlRef.current = target.sourceUrl;
+          const resumeSec = getResumeProgressForTrack(target.id);
           widget.load(target.sourceUrl, {
             auto_play: true,
             hide_related: true,
@@ -2330,6 +2380,11 @@ function App() {
           setTimeout(() => {
             try { widget.setVolume(Math.max(0, Math.min(100, Math.round(volume * 100)))); } catch {}
           }, 120);
+          if (resumeSec > 0.5) {
+            setTimeout(() => {
+              try { widget.seekTo(Math.max(0, Math.floor(resumeSec * 1000))); } catch {}
+            }, 260);
+          }
           setTimeout(() => {
             try { widget.getDuration((ms) => {
               const sec = Math.max(0, Number(ms || 0) / 1000);
@@ -2365,6 +2420,7 @@ function App() {
           } else {
             if (soundcloudWidgetTrackUrlRef.current !== currentTrack?.sourceUrl) {
               soundcloudWidgetTrackUrlRef.current = currentTrack?.sourceUrl || "";
+              const resumeSec = getResumeProgressForTrack(currentTrack?.id);
               widget.load(currentTrack?.sourceUrl || "", {
                 auto_play: false,
                 hide_related: true,
@@ -2377,6 +2433,11 @@ function App() {
               setTimeout(() => {
                 try { widget.setVolume(Math.max(0, Math.min(100, Math.round(volume * 100)))); } catch {}
               }, 120);
+              if (resumeSec > 0.5) {
+                setTimeout(() => {
+                  try { widget.seekTo(Math.max(0, Math.floor(resumeSec * 1000))); } catch {}
+                }, 230);
+              }
               setTimeout(() => { try { widget.play(); } catch {} }, 250);
             } else {
               widget.play();
@@ -3328,7 +3389,16 @@ function App() {
               Number(currentTrack?.durationSec || 0) || Number(currentTrack?.durationMs || 0) / 1000 || 0
             );
             setDuration(Math.max(mediaDuration, catalogDuration));
-            setProgress(0);
+            const resumeSec = getResumeProgressForTrack(currentTrack?.id);
+            if (resumeSec > 0.5) {
+              e.currentTarget.currentTime = Math.min(
+                resumeSec,
+                Math.max(0, mediaDuration || catalogDuration || resumeSec)
+              );
+              setProgress(resumeSec);
+            } else {
+              setProgress(0);
+            }
           }}
           onTimeUpdate={(e) => {
             const current = Math.max(0, Number(e.currentTarget.currentTime || 0));
