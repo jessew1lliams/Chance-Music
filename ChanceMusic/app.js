@@ -464,7 +464,19 @@ function App() {
   const [publicCatalogStatus, setPublicCatalogStatus] = useState("");
   const [resumeState, setResumeState] = useState(() => {
     try {
-      const raw = JSON.parse(localStorage.getItem(PLAYER_RESUME_KEY) || "null");
+      let raw = null;
+      try {
+        raw = JSON.parse(localStorage.getItem(PLAYER_RESUME_KEY) || "null");
+      } catch {
+        raw = null;
+      }
+      if ((!raw || !raw.trackId) && window.sessionStorage) {
+        try {
+          raw = JSON.parse(sessionStorage.getItem(PLAYER_RESUME_KEY) || "null");
+        } catch {
+          raw = null;
+        }
+      }
       if (!raw || !raw.trackId) return { trackId: null, progress: 0 };
       return {
         trackId: String(raw.trackId),
@@ -915,18 +927,48 @@ function App() {
     volumeRef.current = volume;
   }, [volume]);
 
+  const persistPlayerResume = (trackIdValue, progressValue) => {
+    if (!trackIdValue) return false;
+    const payload = {
+      trackId: String(trackIdValue),
+      progress: Math.max(0, Number(progressValue || 0)),
+      updatedAt: Date.now()
+    };
+    const serialized = JSON.stringify(payload);
+    const saved = safeSetLocalStorage(PLAYER_RESUME_KEY, serialized);
+    if (window.sessionStorage) {
+      try {
+        sessionStorage.setItem(PLAYER_RESUME_KEY, serialized);
+      } catch {}
+    }
+    return saved;
+  };
+
   useEffect(() => {
     const now = Date.now();
     if (now - lastResumeSaveRef.current < 700) return;
     if (!currentTrackId) return;
     lastResumeSaveRef.current = now;
-    const payload = {
-      trackId: currentTrackId ? String(currentTrackId) : null,
-      progress: Math.max(0, Number(progress || 0)),
-      updatedAt: now
-    };
-    safeSetLocalStorage(PLAYER_RESUME_KEY, JSON.stringify(payload));
+    persistPlayerResume(currentTrackId, progress);
   }, [currentTrackId, progress]);
+
+  useEffect(() => {
+    const persistNow = () => {
+      if (!currentTrackId) return;
+      persistPlayerResume(currentTrackId, progressRef.current);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") persistNow();
+    };
+    window.addEventListener("pagehide", persistNow);
+    window.addEventListener("beforeunload", persistNow);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", persistNow);
+      window.removeEventListener("beforeunload", persistNow);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [currentTrackId]);
 
   useEffect(() => {
     progressRef.current = progress;
