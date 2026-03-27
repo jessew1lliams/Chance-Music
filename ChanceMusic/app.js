@@ -482,6 +482,8 @@ function App() {
   const volumeHideTimerRef = useRef(null);
   const volumeVizRafRef = useRef(0);
   const volumePulseRef = useRef(0);
+  const beatPrevLowRef = useRef(0);
+  const beatPrevMidRef = useRef(0);
   const hashSyncRef = useRef(false);
   const supabaseSchemaRef = useRef("auto");
   const usersRef = useRef(users);
@@ -960,7 +962,54 @@ function App() {
       cancelAnimationFrame(volumeVizRafRef.current);
       volumeVizRafRef.current = 0;
     }
-    setVolumePulse(0);
+    beatPrevLowRef.current = 0;
+    beatPrevMidRef.current = 0;
+    if (!isPlaying) {
+      setVolumePulse(0);
+      return;
+    }
+    const tick = () => {
+      const analyser = analyserRef.current;
+      const data = analyserDataRef.current;
+      if (!analyser || !data) {
+        if (volumePulseRef.current !== 0) setVolumePulse(0);
+        volumeVizRafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      analyser.getByteFrequencyData(data);
+
+      // Low band ≈ kick/bass region, mid band for contrast to avoid fake constant motion.
+      const lowEnd = Math.min(26, data.length);
+      const midStart = Math.min(26, data.length);
+      const midEnd = Math.min(110, data.length);
+      let lowSum = 0;
+      let midSum = 0;
+      for (let i = 0; i < lowEnd; i += 1) lowSum += data[i];
+      for (let i = midStart; i < midEnd; i += 1) midSum += data[i];
+      const lowAvg = lowEnd ? (lowSum / lowEnd) / 255 : 0;
+      const midAvg = (midEnd - midStart) ? (midSum / (midEnd - midStart)) / 255 : 0;
+
+      const prevLow = beatPrevLowRef.current;
+      const prevMid = beatPrevMidRef.current;
+      beatPrevLowRef.current = lowAvg;
+      beatPrevMidRef.current = midAvg;
+
+      // Onset/flux in low band + dominance over mids => feels like kick hits.
+      const lowFlux = Math.max(0, lowAvg - prevLow * 0.86);
+      const midFlux = Math.max(0, midAvg - prevMid * 0.9);
+      const dominance = Math.max(0, lowAvg - midAvg * 0.62);
+      const hit = Math.max(0, dominance * 1.25 + lowFlux * 2.1 - midFlux * 0.6);
+      const targetPulse = Math.min(1, hit);
+
+      // No "constant breathing": only hit spikes + fast decay.
+      const decay = 0.84;
+      const next = Math.max(targetPulse, volumePulseRef.current * decay);
+      if (Math.abs(next - volumePulseRef.current) > 0.006) setVolumePulse(next);
+
+      volumeVizRafRef.current = requestAnimationFrame(tick);
+    };
+    volumeVizRafRef.current = requestAnimationFrame(tick);
     return () => {
       if (volumeVizRafRef.current) {
         cancelAnimationFrame(volumeVizRafRef.current);
