@@ -918,6 +918,7 @@ function App() {
   useEffect(() => {
     const now = Date.now();
     if (now - lastResumeSaveRef.current < 700) return;
+    if (!currentTrackId) return;
     lastResumeSaveRef.current = now;
     const payload = {
       trackId: currentTrackId ? String(currentTrackId) : null,
