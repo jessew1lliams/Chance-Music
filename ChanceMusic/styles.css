@@ -364,6 +364,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
   justify-self: stretch;
   width: 100%;
 }
+.player-right .volume-wrap,
+.player-right .player-menu-wrap {
+  transform: translateY(3px);
+}
 .like-btn { position: relative; width: 28px; height: 28px; min-width: 28px; min-height: 28px; }
 .like-icon-layer {
   position: absolute;
