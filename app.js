@@ -960,54 +960,7 @@ function App() {
       cancelAnimationFrame(volumeVizRafRef.current);
       volumeVizRafRef.current = 0;
     }
-    if (!isPlaying) {
-      setVolumePulse(0);
-      return;
-    }
-    const tick = (ts) => {
-      let targetPulse = 0;
-      const waveformPeaks = waveformPeaksRef.current;
-      const liveProgress = progressRef.current;
-      const liveDuration = durationRef.current;
-      if (waveformPeaks.length && liveDuration > 0) {
-        const ratio = Math.min(1, Math.max(0, liveProgress / liveDuration));
-        const center = Math.floor(ratio * (waveformPeaks.length - 1));
-        const from = Math.max(0, center - 2);
-        const to = Math.min(waveformPeaks.length - 1, center + 2);
-        let sum = 0;
-        let count = 0;
-        for (let i = from; i <= to; i += 1) {
-          sum += waveformPeaks[i];
-          count += 1;
-        }
-        const avg = count ? (sum / count) : 0;
-        const normalized = avg / (waveformPeakMaxRef.current || 1);
-        targetPulse = Math.min(1, Math.max(0, normalized * 1.55));
-      } else {
-        const analyser = analyserRef.current;
-        const data = analyserDataRef.current;
-        if (analyser && data) {
-        analyser.getByteFrequencyData(data);
-        const lowBins = Math.min(20, data.length);
-        let lowSum = 0;
-        let midSum = 0;
-        const midStart = Math.min(20, data.length);
-        const midEnd = Math.min(120, data.length);
-        for (let i = 0; i < lowBins; i += 1) lowSum += data[i];
-        for (let i = midStart; i < midEnd; i += 1) midSum += data[i];
-        const lowAvg = lowBins ? (lowSum / lowBins) / 255 : 0;
-        const midAvg = (midEnd - midStart) ? (midSum / (midEnd - midStart)) / 255 : 0;
-        const kick = Math.max(0, lowAvg - midAvg * 0.72);
-        targetPulse = Math.min(1, Math.max(0, lowAvg * 1.2 + kick * 1.8 - 0.08));
-        } else {
-          targetPulse = 0.08 + 0.06 * (1 + Math.sin(ts / 130));
-        }
-      }
-      const next = volumePulseRef.current * 0.72 + targetPulse * 0.28;
-      if (Math.abs(next - volumePulseRef.current) > 0.008) setVolumePulse(next);
-      volumeVizRafRef.current = requestAnimationFrame(tick);
-    };
-    volumeVizRafRef.current = requestAnimationFrame(tick);
+    setVolumePulse(0);
     return () => {
       if (volumeVizRafRef.current) {
         cancelAnimationFrame(volumeVizRafRef.current);
