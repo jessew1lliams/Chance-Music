@@ -971,36 +971,52 @@ function App() {
     const tick = () => {
       const analyser = analyserRef.current;
       const data = analyserDataRef.current;
-      if (!analyser || !data) {
-        if (volumePulseRef.current !== 0) setVolumePulse(0);
-        volumeVizRafRef.current = requestAnimationFrame(tick);
-        return;
+      let targetPulse = 0;
+      if (analyser && data) {
+        analyser.getByteFrequencyData(data);
+
+        // Low band ≈ kick/bass region, mid band for contrast to avoid fake constant motion.
+        const lowEnd = Math.min(26, data.length);
+        const midStart = Math.min(26, data.length);
+        const midEnd = Math.min(110, data.length);
+        let lowSum = 0;
+        let midSum = 0;
+        for (let i = 0; i < lowEnd; i += 1) lowSum += data[i];
+        for (let i = midStart; i < midEnd; i += 1) midSum += data[i];
+        const lowAvg = lowEnd ? (lowSum / lowEnd) / 255 : 0;
+        const midAvg = (midEnd - midStart) ? (midSum / (midEnd - midStart)) / 255 : 0;
+
+        const prevLow = beatPrevLowRef.current;
+        const prevMid = beatPrevMidRef.current;
+        beatPrevLowRef.current = lowAvg;
+        beatPrevMidRef.current = midAvg;
+
+        // Onset/flux in low band + dominance over mids => feels like kick hits.
+        const lowFlux = Math.max(0, lowAvg - prevLow * 0.86);
+        const midFlux = Math.max(0, midAvg - prevMid * 0.9);
+        const dominance = Math.max(0, lowAvg - midAvg * 0.62);
+        const hit = Math.max(0, dominance * 1.25 + lowFlux * 2.1 - midFlux * 0.6);
+        targetPulse = Math.min(1, hit);
+      } else {
+        // Fallback: drive pulse by real SoundCloud waveform at current track position.
+        const peaks = waveformPeaksRef.current;
+        const liveProgress = progressRef.current;
+        const liveDuration = durationRef.current;
+        if (peaks.length > 8 && liveDuration > 0) {
+          const ratio = Math.min(1, Math.max(0, liveProgress / liveDuration));
+          const idx = Math.floor(ratio * (peaks.length - 1));
+          const prev = peaks[Math.max(0, idx - 1)] || 0;
+          const cur = peaks[idx] || 0;
+          const next = peaks[Math.min(peaks.length - 1, idx + 1)] || 0;
+          const avg = (prev + cur + next) / 3;
+          const max = waveformPeakMaxRef.current || 1;
+          const normalized = avg / max;
+          const flux = Math.max(0, (cur - prev) / max);
+          targetPulse = Math.min(1, Math.max(0, normalized * 0.95 + flux * 1.45 - 0.07));
+        } else {
+          targetPulse = 0;
+        }
       }
-
-      analyser.getByteFrequencyData(data);
-
-      // Low band ≈ kick/bass region, mid band for contrast to avoid fake constant motion.
-      const lowEnd = Math.min(26, data.length);
-      const midStart = Math.min(26, data.length);
-      const midEnd = Math.min(110, data.length);
-      let lowSum = 0;
-      let midSum = 0;
-      for (let i = 0; i < lowEnd; i += 1) lowSum += data[i];
-      for (let i = midStart; i < midEnd; i += 1) midSum += data[i];
-      const lowAvg = lowEnd ? (lowSum / lowEnd) / 255 : 0;
-      const midAvg = (midEnd - midStart) ? (midSum / (midEnd - midStart)) / 255 : 0;
-
-      const prevLow = beatPrevLowRef.current;
-      const prevMid = beatPrevMidRef.current;
-      beatPrevLowRef.current = lowAvg;
-      beatPrevMidRef.current = midAvg;
-
-      // Onset/flux in low band + dominance over mids => feels like kick hits.
-      const lowFlux = Math.max(0, lowAvg - prevLow * 0.86);
-      const midFlux = Math.max(0, midAvg - prevMid * 0.9);
-      const dominance = Math.max(0, lowAvg - midAvg * 0.62);
-      const hit = Math.max(0, dominance * 1.25 + lowFlux * 2.1 - midFlux * 0.6);
-      const targetPulse = Math.min(1, hit);
 
       // No "constant breathing": only hit spikes + fast decay.
       const decay = 0.84;
