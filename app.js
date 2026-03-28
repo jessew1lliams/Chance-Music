@@ -480,7 +480,10 @@ function App() {
       if (!raw || !raw.trackId) return { trackId: null, progress: 0 };
       return {
         trackId: String(raw.trackId),
-        progress: Math.max(0, Number(raw.progress || 0))
+        progress: Math.max(0, Number(raw.progress || 0)),
+        sourceUrl: raw.sourceUrl ? String(raw.sourceUrl) : "",
+        title: raw.title ? String(raw.title) : "",
+        artist: raw.artist ? String(raw.artist) : ""
       };
     } catch {
       return { trackId: null, progress: 0 };
@@ -590,7 +593,16 @@ function App() {
   useEffect(() => {
     if (!tracks.length) return;
     if (!resumeAppliedRef.current && resumeState?.trackId) {
-      const restored = tracks.find((t) => String(t.id) === String(resumeState.trackId));
+      let restored = tracks.find((t) => String(t.id) === String(resumeState.trackId));
+      if (!restored && resumeState?.sourceUrl) {
+        restored = tracks.find((t) => String(t?.sourceUrl || "") === String(resumeState.sourceUrl));
+      }
+      if (!restored && resumeState?.title && resumeState?.artist) {
+        restored = tracks.find((t) =>
+          String(t?.title || "").trim().toLowerCase() === String(resumeState.title).trim().toLowerCase() &&
+          String(t?.artist || "").trim().toLowerCase() === String(resumeState.artist).trim().toLowerCase()
+        );
+      }
       if (restored) {
         setCurrentTrackId(String(restored.id));
         setProgress(Math.max(0, Number(resumeState.progress || 0)));
@@ -929,9 +941,13 @@ function App() {
 
   const persistPlayerResume = (trackIdValue, progressValue) => {
     if (!trackIdValue) return false;
+    const track = tracks.find((t) => String(t.id) === String(trackIdValue)) || null;
     const payload = {
       trackId: String(trackIdValue),
       progress: Math.max(0, Number(progressValue || 0)),
+      sourceUrl: track?.sourceUrl ? String(track.sourceUrl) : "",
+      title: track?.title ? String(track.title) : "",
+      artist: track?.artist ? String(track.artist) : "",
       updatedAt: Date.now()
     };
     const serialized = JSON.stringify(payload);
