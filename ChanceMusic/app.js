@@ -609,7 +609,6 @@ function App() {
         resumeAppliedRef.current = true;
         return;
       }
-      resumeAppliedRef.current = true;
     }
     const exists = tracks.some((t) => String(t.id) === String(currentTrackId));
     if (exists) return;
@@ -912,7 +911,6 @@ function App() {
         const parsed = JSON.parse(fromStorage);
         const normalized = normalizeAppData(parsed);
         setData(normalized);
-        setCurrentTrackId(normalizeTrackId(normalized.tracks?.[0]?.id || null));
         return;
       } catch {}
     }
@@ -921,12 +919,10 @@ function App() {
       .then((json) => {
         const normalized = normalizeAppData(json);
         setData(normalized);
-        setCurrentTrackId(normalizeTrackId(normalized.tracks?.[0]?.id || null));
       })
       .catch(() => {
         const normalized = normalizeAppData({});
         setData(normalized);
-        setCurrentTrackId(normalizeTrackId(normalized.tracks?.[0]?.id || null));
       });
   }, []);
 
