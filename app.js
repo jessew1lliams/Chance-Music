@@ -401,6 +401,9 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
+  const [progressHoverOpen, setProgressHoverOpen] = useState(false);
+  const [progressHoverSec, setProgressHoverSec] = useState(0);
+  const [progressHoverPercent, setProgressHoverPercent] = useState(0);
   const [volume, setVolume] = useState(() => {
     const raw = Number(localStorage.getItem(PLAYER_VOLUME_KEY) || "0.8");
     if (!Number.isFinite(raw)) return 0.8;
@@ -597,6 +600,17 @@ function App() {
     const centerPx = raw * usable + (thumbPx / 2);
     return Math.min(100, Math.max(0, (centerPx / width) * 100));
   }, [progress, duration, progressBarWidth]);
+  const remainingSec = Math.max(0, Number(duration || 0) - Number(progress || 0));
+
+  const updateProgressHoverFromClientX = (clientX, targetEl) => {
+    if (!targetEl) return;
+    const rect = targetEl.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const max = Math.max(0, Number(duration || 0));
+    setProgressHoverPercent(ratio * 100);
+    setProgressHoverSec(max * ratio);
+  };
 
   useEffect(() => {
     if (!tracks.length) return;
@@ -3280,6 +3294,14 @@ function App() {
 
       <footer className="player">
         <div className="player-progress-wrap">
+          {progressHoverOpen && (
+            <div
+              className="progress-hover-time"
+              style={{ left: `${progressHoverPercent}%` }}
+            >
+              {formatTime(progressHoverSec)}
+            </div>
+          )}
           <input
             ref={progressInputRef}
             className="progress"
@@ -3304,9 +3326,19 @@ function App() {
               const n = Number(e.target.value);
               setProgress(n);
             }}
+            onMouseEnter={(e) => {
+              setProgressHoverOpen(true);
+              updateProgressHoverFromClientX(e.clientX, e.currentTarget);
+            }}
+            onMouseMove={(e) => {
+              updateProgressHoverFromClientX(e.clientX, e.currentTarget);
+            }}
+            onMouseLeave={() => {
+              setProgressHoverOpen(false);
+            }}
           />
           <div className="progress-times">
-            <span>{formatTime(progress)}</span>
+            <span>-{formatTime(remainingSec)}</span>
             <span>{formatTime(duration)}</span>
           </div>
         </div>

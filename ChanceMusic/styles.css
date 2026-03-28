@@ -266,9 +266,24 @@ button, input, textarea, select { font: inherit; color: inherit; }
   z-index: 2;
   opacity: 0.28;
   transition: opacity 0.2s ease;
+  overflow: visible;
 }
 .player-progress-wrap:hover,
 .player-progress-wrap:focus-within { opacity: 1; }
+.progress-hover-time {
+  position: absolute;
+  top: -8px;
+  transform: translate(-50%, -100%);
+  background: rgba(0, 0, 0, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: #fff;
+  pointer-events: none;
+  white-space: nowrap;
+}
 .progress {
   width: 100%;
   height: 6px;
@@ -311,7 +326,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
   opacity: 0;
 }
 
-.progress-times { display: none; }
+.progress-times {
+  margin-top: 3px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #b9b9b9;
+  padding-inline: 4px;
+}
 
 .player-left, .player-center, .player-right { display: flex; align-items: center; gap: 8px; }
 .player-left { justify-content: flex-start; }
