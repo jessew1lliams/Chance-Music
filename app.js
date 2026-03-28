@@ -519,6 +519,14 @@ function App() {
   const playNextTrackRef = useRef(null);
   const resumeAppliedRef = useRef(false);
   const lastResumeSaveRef = useRef(0);
+  const resumeSeedRef = useRef(
+    resumeState?.trackId
+      ? {
+          trackId: String(resumeState.trackId),
+          progress: Math.max(0, Number(resumeState.progress || 0))
+        }
+      : null
+  );
 
   const isWidgetSoundcloudTrack = (track) => {
     if (!track) return false;
@@ -960,6 +968,17 @@ function App() {
     const now = Date.now();
     if (now - lastResumeSaveRef.current < 700) return;
     if (!currentTrackId) return;
+    const seed = resumeSeedRef.current;
+    if (seed && String(seed.trackId) === String(currentTrackId)) {
+      const liveProgress = Math.max(0, Number(progress || 0));
+      const expected = Math.max(0, Number(seed.progress || 0));
+      if (expected > 1 && liveProgress < Math.max(1, expected * 0.35)) {
+        return;
+      }
+      resumeSeedRef.current = null;
+    } else if (seed && String(seed.trackId) !== String(currentTrackId)) {
+      resumeSeedRef.current = null;
+    }
     lastResumeSaveRef.current = now;
     persistPlayerResume(currentTrackId, progress);
   }, [currentTrackId, progress]);
