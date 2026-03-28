@@ -619,6 +619,9 @@ function App() {
         resumeAppliedRef.current = true;
         return;
       }
+      // Important: do not auto-pick the first track while resume is pending.
+      // Otherwise saved track gets overwritten during bootstrap.
+      return;
     }
     const exists = tracks.some((t) => String(t.id) === String(currentTrackId));
     if (exists) return;
