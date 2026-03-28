@@ -612,8 +612,10 @@ function App() {
         );
       }
       if (restored) {
+        const restoredProgress = Math.max(0, Number(resumeState.progress || 0));
         setCurrentTrackId(String(restored.id));
-        setProgress(Math.max(0, Number(resumeState.progress || 0)));
+        setProgress(restoredProgress);
+        setDuration((prev) => Math.max(Number(prev || 0), restoredProgress > 0 ? restoredProgress + 1 : 0));
         resumeAppliedRef.current = true;
         return;
       }
@@ -961,6 +963,13 @@ function App() {
         sessionStorage.setItem(PLAYER_RESUME_KEY, serialized);
       } catch {}
     }
+    setResumeState({
+      trackId: payload.trackId,
+      progress: payload.progress,
+      sourceUrl: payload.sourceUrl,
+      title: payload.title,
+      artist: payload.artist
+    });
     return saved;
   };
 
@@ -1004,6 +1013,17 @@ function App() {
   useEffect(() => {
     progressRef.current = progress;
   }, [progress]);
+
+  useEffect(() => {
+    if (!currentTrackId || !resumeState?.trackId) return;
+    if (String(currentTrackId) !== String(resumeState.trackId)) return;
+    const restoredProgress = Math.max(0, Number(resumeState.progress || 0));
+    if (restoredProgress <= 0.5) return;
+    const liveProgress = Math.max(0, Number(progress || 0));
+    if (liveProgress >= 0.5) return;
+    setProgress(restoredProgress);
+    setDuration((prev) => Math.max(Number(prev || 0), restoredProgress + 1));
+  }, [currentTrackId, resumeState, progress]);
 
   useEffect(() => {
     durationRef.current = duration;
