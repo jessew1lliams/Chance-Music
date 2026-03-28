@@ -1198,6 +1198,10 @@ function App() {
   }, []);
 
   useEffect(() => {
+    ensureSoundcloudWidgetApi().catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const state = params.get("state");
@@ -2498,13 +2502,12 @@ function App() {
       try { soundcloudWidgetRef.current.pause(); } catch {}
     }
     setPlayerNotice("");
-    setTimeout(() => {
-      playNativeAudioUrl(target.audio || "");
-    }, 0);
+    playNativeAudioUrl(target.audio || "");
   };
 
   const onPlayPause = () => {
     if (isWidgetSoundcloudTrack(currentTrack)) {
+      setIsPlaying(true);
       (async () => {
         try {
           const widget = await ensureSoundcloudWidget();
@@ -2516,7 +2519,7 @@ function App() {
               soundcloudWidgetTrackUrlRef.current = currentTrack?.sourceUrl || "";
               const resumeSec = getResumeProgressForTrack(currentTrack?.id);
               widget.load(currentTrack?.sourceUrl || "", {
-                auto_play: false,
+                auto_play: true,
                 hide_related: true,
                 show_comments: false,
                 show_user: false,
@@ -2532,12 +2535,12 @@ function App() {
                   try { widget.seekTo(Math.max(0, Math.floor(resumeSec * 1000))); } catch {}
                 }, 230);
               }
-              setTimeout(() => { try { widget.play(); } catch {} }, 250);
             } else {
               widget.play();
             }
           }
         } catch (err) {
+          setIsPlaying(false);
           setPlayerNotice(`SoundCloud playback error: ${err.message}`);
         }
       })();
@@ -3474,6 +3477,7 @@ function App() {
 
         <audio
           ref={audioRef}
+          preload="auto"
           crossOrigin="anonymous"
           src={currentTrack?.audio || ""}
           onLoadedMetadata={(e) => {
