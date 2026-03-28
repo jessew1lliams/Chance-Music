@@ -974,6 +974,15 @@ function App() {
   };
 
   useEffect(() => {
+    if (!currentTrackId) return;
+    const resumeForSameTrack = resumeState?.trackId && String(resumeState.trackId) === String(currentTrackId)
+      ? Math.max(0, Number(resumeState.progress || 0))
+      : 0;
+    const liveProgress = Math.max(0, Number(progressRef.current || 0));
+    persistPlayerResume(currentTrackId, Math.max(liveProgress, resumeForSameTrack));
+  }, [currentTrackId]);
+
+  useEffect(() => {
     const now = Date.now();
     if (now - lastResumeSaveRef.current < 700) return;
     if (!currentTrackId) return;
